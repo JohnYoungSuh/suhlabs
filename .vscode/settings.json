@@ -1,0 +1,13 @@
+{
+  "terminal.integrated.profiles.windows": {
+    "WSL Ubuntu": {
+      "path": "wsl.exe",
+      "args": ["-d", "Ubuntu-22.04"]
+    }
+  },
+  "terminal.integrated.defaultProfile.windows": "WSL Ubuntu",
+  "terraform.languageServer": {
+    "enabled": true
+  },
+  "ansible.python.interpreterPath": "/usr/bin/python3"
+}

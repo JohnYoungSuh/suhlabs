@@ -17,6 +17,12 @@
         vault-up vault-down \
         ollama-pull \
         migrate-state \
+        packer-build packer-validate \
+        ansible-ping ansible-deploy-k3s ansible-deploy-apps ansible-kubeconfig \
+        ansible-deploy-infra ansible-deploy-dns ansible-deploy-freeipa \
+        ansible-validate validate-all \
+        autoscaler-build autoscaler-deploy autoscaler-status \
+        template-clone vm-create vm-list \
         clean
 
 # -----------------------------------------------------------------------------
@@ -72,6 +78,29 @@ help:
 	@echo "  init-prod        Initialize Terraform with Proxmox backend"
 	@echo "  apply-prod       Apply Terraform to Proxmox"
 	@echo "  migrate-state    Migrate state from local → prod"
+	@echo ""
+	@echo "${GREEN}Image Building:${RESET}"
+	@echo "  packer-validate  Validate Packer template"
+	@echo "  packer-build     Build CentOS 9 cloud-init template"
+	@echo "  autoscaler-build Build and push autoscaler container"
+	@echo ""
+	@echo "${GREEN}Ansible Deployment:${RESET}"
+	@echo "  ansible-ping             Test connectivity to all hosts"
+	@echo "  ansible-deploy-k3s       Deploy k3s cluster (HA control plane + workers)"
+	@echo "  ansible-deploy-apps      Deploy applications to k3s"
+	@echo "  ansible-deploy-infra     Deploy infrastructure services (DNS + FreeIPA)"
+	@echo "  ansible-deploy-dns       Deploy only DNS server (BIND)"
+	@echo "  ansible-deploy-freeipa   Deploy only FreeIPA (LDAP + Kerberos + CA)"
+	@echo "  ansible-kubeconfig       Fetch kubeconfig from cluster"
+	@echo "  ansible-validate         Validate complete deployment"
+	@echo ""
+	@echo "${GREEN}Validation:${RESET}"
+	@echo "  validate-all         Run comprehensive validation (Packer + Terraform + Ansible + K8s)"
+	@echo ""
+	@echo "${GREEN}Autoscaling:${RESET}"
+	@echo "  autoscaler-deploy Deploy autoscaler to k3s"
+	@echo "  autoscaler-status Check autoscaler status"
+	@echo "  vm-list          List all VMs with autoscale tags"
 	@echo ""
 	@echo "${GREEN}Shared:${RESET}"
 	@echo "  lint             Run all linters"
@@ -246,6 +275,225 @@ sign: sbom
 	@echo "${GREEN}Signing SBOM and manifests...${RESET}"
 	$(COSIGN) sign-blob --key cosign.key sbom.json > sbom.json.sig
 	$(COSIGN) sign-blob --key cosign.key cluster/k3s/apps/ai-ops-agent/deployment.yaml > deployment.yaml.sig
+
+# -----------------------------------------------------------------------------
+# Packer: VM Template Building
+# -----------------------------------------------------------------------------
+PACKER := packer
+PACKER_TEMPLATE := packer/centos9-cloudinit.pkr.hcl
+
+packer-validate:
+	@echo "${GREEN}Validating Packer template...${RESET}"
+	cd packer && $(PACKER) validate centos9-cloudinit.pkr.hcl
+
+packer-build: packer-validate
+	@echo "${GREEN}Building CentOS 9 cloud-init template with Packer...${RESET}"
+	@echo "This will create a VM template on Proxmox node"
+	@echo "Ensure PM_API_URL, PM_API_TOKEN_ID, PM_API_TOKEN_SECRET are set"
+	cd packer && $(PACKER) build centos9-cloudinit.pkr.hcl
+	@echo "${GREEN}Template 'centos9-cloud' created successfully${RESET}"
+
+packer-debug:
+	@echo "${GREEN}Building with debug output...${RESET}"
+	cd packer && PACKER_LOG=1 $(PACKER) build -debug centos9-cloudinit.pkr.hcl
+
+# -----------------------------------------------------------------------------
+# Ansible: Cluster & Application Deployment
+# -----------------------------------------------------------------------------
+ANSIBLE_INVENTORY := inventory/proxmox.yml
+ANSIBLE_PLAYBOOK_DIR := ansible
+
+ansible-ping:
+	@echo "${GREEN}Testing connectivity to all hosts...${RESET}"
+	$(ANSIBLE) all -i $(ANSIBLE_INVENTORY) -m ping
+
+ansible-preflight:
+	@echo "${GREEN}Running pre-flight checks...${RESET}"
+	$(ANSIBLE) -i $(ANSIBLE_INVENTORY) $(ANSIBLE_PLAYBOOK_DIR)/deploy-k3s.yml --tags preflight
+
+ansible-deploy-lb:
+	@echo "${GREEN}Deploying HAProxy load balancers...${RESET}"
+	$(ANSIBLE) -i $(ANSIBLE_INVENTORY) $(ANSIBLE_PLAYBOOK_DIR)/deploy-k3s.yml --tags loadbalancer
+
+ansible-deploy-k3s: ansible-preflight ansible-deploy-lb
+	@echo "${GREEN}Deploying k3s cluster...${RESET}"
+	@echo "This will:"
+	@echo "  1. Deploy HAProxy load balancers with Keepalived"
+	@echo "  2. Initialize first control plane node"
+	@echo "  3. Join additional control plane nodes"
+	@echo "  4. Join worker nodes"
+	@echo ""
+	$(ANSIBLE) -i $(ANSIBLE_INVENTORY) $(ANSIBLE_PLAYBOOK_DIR)/deploy-k3s.yml
+	@echo ""
+	@echo "${GREEN}k3s cluster deployed successfully!${RESET}"
+	@echo "Run 'make ansible-kubeconfig' to fetch the kubeconfig"
+
+ansible-deploy-apps:
+	@echo "${GREEN}Deploying applications to k3s...${RESET}"
+	@echo "This will deploy:"
+	@echo "  - Storage provisioner (local-path)"
+	@echo "  - Vault (secrets management)"
+	@echo "  - Ollama (LLM runtime)"
+	@echo "  - MinIO (S3 storage)"
+	@echo "  - AI Ops Agent (FastAPI service)"
+	@echo "  - Autoscaler (CronJob)"
+	@echo ""
+	$(ANSIBLE) -i $(ANSIBLE_INVENTORY) $(ANSIBLE_PLAYBOOK_DIR)/deploy-apps.yml
+	@echo ""
+	@echo "${GREEN}Applications deployed successfully!${RESET}"
+
+ansible-kubeconfig:
+	@echo "${GREEN}Fetching kubeconfig from cluster...${RESET}"
+	@mkdir -p ~/.kube
+	scp -o StrictHostKeyChecking=no cloud-user@10.100.0.10:~/.kube/config ~/.kube/config-aiops-prod
+	@echo "Kubeconfig saved to: ~/.kube/config-aiops-prod"
+	@echo ""
+	@echo "To use this kubeconfig:"
+	@echo "  export KUBECONFIG=~/.kube/config-aiops-prod"
+	@echo "  kubectl get nodes"
+
+ansible-verify:
+	@echo "${GREEN}Verifying cluster deployment...${RESET}"
+	$(ANSIBLE) -i $(ANSIBLE_INVENTORY) $(ANSIBLE_PLAYBOOK_DIR)/deploy-k3s.yml --tags verify
+	$(ANSIBLE) -i $(ANSIBLE_INVENTORY) $(ANSIBLE_PLAYBOOK_DIR)/deploy-apps.yml --tags verify
+
+ansible-upgrade-k3s:
+	@echo "${GREEN}Upgrading k3s cluster...${RESET}"
+	@echo "WARNING: This will upgrade k3s on all nodes"
+	@read -p "Continue? (y/N) " confirm && [ "$$confirm" = "y" ] || exit 1
+	K3S_VERSION=$(K3S_VERSION) $(ANSIBLE) -i $(ANSIBLE_INVENTORY) $(ANSIBLE_PLAYBOOK_DIR)/upgrade-k3s.yml
+
+ansible-drain-node:
+	@echo "${GREEN}Draining node for maintenance...${RESET}"
+	@read -p "Enter node name: " node && \
+	$(ANSIBLE) -i $(ANSIBLE_INVENTORY) k3s-cp-01 -m shell -a "kubectl drain $$node --ignore-daemonsets --delete-emptydir-data"
+
+ansible-uncordon-node:
+	@echo "${GREEN}Uncordoning node...${RESET}"
+	@read -p "Enter node name: " node && \
+	$(ANSIBLE) -i $(ANSIBLE_INVENTORY) k3s-cp-01 -m shell -a "kubectl uncordon $$node"
+
+ansible-logs:
+	@echo "${GREEN}Fetching k3s logs from control plane...${RESET}"
+	$(ANSIBLE) -i $(ANSIBLE_INVENTORY) control_plane -m shell -a "journalctl -u k3s -n 100"
+
+ansible-deploy-infra:
+	@echo "${GREEN}Deploying infrastructure services (DNS + FreeIPA + PKI)...${RESET}"
+	@echo "This will deploy:"
+	@echo "  - DNS Server (BIND) with forward/reverse zones"
+	@echo "  - FreeIPA (LDAP + Kerberos + CA + DNS integration)"
+	@echo "  - Service principals for k3s"
+	@echo ""
+	$(ANSIBLE) -i $(ANSIBLE_INVENTORY) $(ANSIBLE_PLAYBOOK_DIR)/deploy-infrastructure-services.yml
+	@echo ""
+	@echo "${GREEN}Infrastructure services deployed successfully!${RESET}"
+
+ansible-deploy-dns:
+	@echo "${GREEN}Deploying DNS server (BIND)...${RESET}"
+	$(ANSIBLE) -i $(ANSIBLE_INVENTORY) $(ANSIBLE_PLAYBOOK_DIR)/deploy-infrastructure-services.yml --tags dns
+
+ansible-deploy-freeipa:
+	@echo "${GREEN}Deploying FreeIPA...${RESET}"
+	@echo "WARNING: This requires at least 4GB RAM on the target host"
+	@read -p "Continue? (y/N) " confirm && [ "$$confirm" = "y" ] || exit 1
+	$(ANSIBLE) -i $(ANSIBLE_INVENTORY) $(ANSIBLE_PLAYBOOK_DIR)/deploy-infrastructure-services.yml --tags freeipa
+
+ansible-validate:
+	@echo "${GREEN}Running comprehensive deployment validation...${RESET}"
+	$(ANSIBLE) -i $(ANSIBLE_INVENTORY) $(ANSIBLE_PLAYBOOK_DIR)/validate-deployment.yml
+
+# -----------------------------------------------------------------------------
+# Comprehensive Validation
+# -----------------------------------------------------------------------------
+validate-all:
+	@echo "${GREEN}Running comprehensive validation across all layers...${RESET}"
+	@echo ""
+	@echo "==> Validating Packer Templates"
+	make packer-validate || echo "WARNING: Packer validation failed"
+	@echo ""
+	@echo "==> Validating Terraform Configuration"
+	cd infra/proxmox && terraform validate || echo "WARNING: Terraform validation failed"
+	@echo ""
+	@echo "==> Validating Ansible Playbooks"
+	ansible-playbook --syntax-check ansible/*.yml || echo "WARNING: Ansible syntax check failed"
+	@echo ""
+	@echo "==> Validating Kubernetes Manifests"
+	kubectl apply --dry-run=client -f cluster/ 2>/dev/null || echo "WARNING: K8s validation failed (cluster may not be running)"
+	@echo ""
+	@echo "==> Running Deployment Validation"
+	make ansible-validate || echo "WARNING: Deployment validation failed"
+	@echo ""
+	@echo "${GREEN}Validation complete! Check output above for any issues.${RESET}"
+
+# -----------------------------------------------------------------------------
+# Autoscaler: Build & Deploy
+# -----------------------------------------------------------------------------
+REGISTRY ?= registry.corp.example.com
+AUTOSCALER_IMAGE := $(REGISTRY)/proxmox-autoscaler
+AUTOSCALER_TAG ?= latest
+
+autoscaler-build:
+	@echo "${GREEN}Building autoscaler container image...${RESET}"
+	$(DOCKER) build -t $(AUTOSCALER_IMAGE):$(AUTOSCALER_TAG) \
+		-f cluster/autoscaler/Dockerfile .
+	@echo "${GREEN}Built $(AUTOSCALER_IMAGE):$(AUTOSCALER_TAG)${RESET}"
+
+autoscaler-push: autoscaler-build
+	@echo "${GREEN}Pushing autoscaler image...${RESET}"
+	$(DOCKER) push $(AUTOSCALER_IMAGE):$(AUTOSCALER_TAG)
+
+autoscaler-sign: autoscaler-push
+	@echo "${GREEN}Signing autoscaler image...${RESET}"
+	$(COSIGN) sign --key cosign.key $(AUTOSCALER_IMAGE):$(AUTOSCALER_TAG)
+
+autoscaler-deploy:
+	@echo "${GREEN}Deploying autoscaler to k3s...${RESET}"
+	$(KUBECTL) apply -f cluster/autoscaler/deployment.yaml
+	@echo "Waiting for autoscaler CronJob to be created..."
+	$(KUBECTL) wait --for=condition=complete --timeout=60s \
+		-n autoscaler job -l app=proxmox-autoscaler || true
+	@echo "${GREEN}Autoscaler deployed successfully${RESET}"
+
+autoscaler-status:
+	@echo "${GREEN}Autoscaler status:${RESET}"
+	@echo ""
+	@echo "CronJob:"
+	$(KUBECTL) get cronjob -n autoscaler
+	@echo ""
+	@echo "Recent Jobs:"
+	$(KUBECTL) get jobs -n autoscaler --sort-by=.metadata.creationTimestamp | tail -5
+	@echo ""
+	@echo "Recent Pods:"
+	$(KUBECTL) get pods -n autoscaler --sort-by=.metadata.creationTimestamp | tail -5
+	@echo ""
+	@echo "Recent Logs:"
+	$(KUBECTL) logs -n autoscaler -l app=proxmox-autoscaler --tail=20 || echo "No logs yet"
+
+autoscaler-logs:
+	$(KUBECTL) logs -n autoscaler -l app=proxmox-autoscaler -f
+
+autoscaler-test:
+	@echo "${GREEN}Triggering manual autoscaler run...${RESET}"
+	$(KUBECTL) create job -n autoscaler --from=cronjob/proxmox-autoscaler autoscaler-manual-$$(date +%s)
+
+# -----------------------------------------------------------------------------
+# VM Management
+# -----------------------------------------------------------------------------
+vm-list:
+	@echo "${GREEN}Listing VMs with autoscale tags...${RESET}"
+	@cd infra/proxmox && $(TERRAFORM) output -json autoscaling_config | jq -r '.asg_vmids[]'
+
+vm-scale-up:
+	@echo "${GREEN}Manually triggering scale up...${RESET}"
+	$(KUBECTL) exec -n autoscaler \
+		$$($(KUBECTL) get pod -n autoscaler -l app=proxmox-autoscaler -o jsonpath='{.items[0].metadata.name}') \
+		-- python3 /app/autoscaler.py --once --cpu-scale-up 0
+
+vm-scale-down:
+	@echo "${GREEN}Manually triggering scale down...${RESET}"
+	$(KUBECTL) exec -n autoscaler \
+		$$($(KUBECTL) get pod -n autoscaler -l app=proxmox-autoscaler -o jsonpath='{.items[0].metadata.name}') \
+		-- python3 /app/autoscaler.py --once --cpu-scale-down 100
 
 # -----------------------------------------------------------------------------
 # Cleanup

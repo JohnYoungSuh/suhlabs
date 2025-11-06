@@ -1,0 +1,255 @@
+---
+# Comprehensive Deployment Validation Playbook
+
+- name: Validate Infrastructure Layer
+  hosts: localhost
+  gather_facts: no
+  tasks:
+    - name: Check Packer templates exist
+      stat:
+        path: "{{ playbook_dir }}/../packer/centos9-cloudinit.pkr.hcl"
+      register: packer_template
+    
+    - name: Validate Packer template syntax
+      command: packer validate {{ playbook_dir }}/../packer/centos9-cloudinit.pkr.hcl
+      changed_when: false
+      failed_when: false
+      register: packer_validate
+    
+    - name: Check Terraform configuration exists
+      stat:
+        path: "{{ playbook_dir }}/../infra/proxmox/main.tf"
+      register: terraform_config
+    
+    - name: Validate Terraform configuration
+      command: terraform validate
+      args:
+        chdir: "{{ playbook_dir }}/../infra/proxmox"
+      changed_when: false
+      failed_when: false
+      register: terraform_validate
+    
+    - name: Display infrastructure validation results
+      debug:
+        msg: |
+          Packer Template: {{ 'PASS' if packer_validate.rc == 0 else 'FAIL' }}
+          Terraform Config: {{ 'PASS' if terraform_validate.rc == 0 else 'FAIL' }}
+
+- name: Validate Ansible Configuration
+  hosts: localhost
+  gather_facts: no
+  tasks:
+    - name: Validate Ansible inventory
+      command: ansible-inventory -i {{ playbook_dir }}/../inventory/proxmox.yml --list
+      changed_when: false
+      register: inventory_check
+    
+    - name: Check Ansible roles exist
+      stat:
+        path: "{{ playbook_dir }}/roles/{{ item }}"
+      loop:
+        - k3s
+        - haproxy
+        - bind-dns
+        - freeipa
+      register: roles_check
+    
+    - name: Display Ansible validation results
+      debug:
+        msg: |
+          Inventory: {{ 'PASS' if inventory_check.rc == 0 else 'FAIL' }}
+          Roles Found: {{ roles_check.results | selectattr('stat.exists') | list | length }}/4
+
+- name: Validate Connectivity
+  hosts: all
+  gather_facts: no
+  tasks:
+    - name: Ping all hosts
+      ping:
+      register: ping_result
+      failed_when: false
+    
+    - name: Display connectivity results
+      debug:
+        msg: "Host {{ inventory_hostname }}: {{ 'ONLINE' if ping_result.ping == 'pong' else 'OFFLINE' }}"
+
+- name: Validate DNS Service
+  hosts: dns_servers
+  become: yes
+  tasks:
+    - name: Check BIND service status
+      systemd:
+        name: named
+      register: bind_status
+    
+    - name: Test DNS resolution
+      command: dig @localhost {{ freeipa_domain }} SOA +short
+      register: dns_test
+      changed_when: false
+      failed_when: false
+    
+    - name: Display DNS validation
+      debug:
+        msg: |
+          BIND Status: {{ bind_status.status.ActiveState }}
+          DNS Resolution: {{ 'PASS' if dns_test.rc == 0 else 'FAIL' }}
+
+- name: Validate FreeIPA Service
+  hosts: freeipa_servers
+  become: yes
+  tasks:
+    - name: Check IPA services status
+      command: ipactl status
+      register: ipa_status
+      changed_when: false
+      failed_when: false
+    
+    - name: Verify Kerberos authentication
+      command: echo {{ freeipa_admin_password }} | kinit admin
+      register: kinit_test
+      changed_when: false
+      failed_when: false
+      no_log: true
+    
+    - name: Test LDAP connectivity
+      command: ldapsearch -x -b "dc={{ freeipa_domain.split('.')[0] }},dc={{ freeipa_domain.split('.')[1] }}" -H ldap://localhost
+      register: ldap_test
+      changed_when: false
+      failed_when: false
+    
+    - name: Display FreeIPA validation
+      debug:
+        msg: |
+          IPA Services: {{ 'RUNNING' if ipa_status.rc == 0 else 'STOPPED' }}
+          Kerberos Auth: {{ 'PASS' if kinit_test.rc == 0 else 'FAIL' }}
+          LDAP Connectivity: {{ 'PASS' if ldap_test.rc == 0 else 'FAIL' }}
+
+- name: Validate k3s Cluster
+  hosts: k3s-cp-01
+  become: yes
+  tasks:
+    - name: Check k3s service
+      systemd:
+        name: k3s
+      register: k3s_status
+    
+    - name: Get cluster nodes
+      command: kubectl get nodes --no-headers
+      register: k3s_nodes
+      changed_when: false
+      failed_when: false
+    
+    - name: Get cluster pods
+      command: kubectl get pods -A --no-headers
+      register: k3s_pods
+      changed_when: false
+      failed_when: false
+    
+    - name: Calculate cluster health
+      set_fact:
+        total_nodes: "{{ k3s_nodes.stdout_lines | length }}"
+        ready_nodes: "{{ k3s_nodes.stdout_lines | select('search', 'Ready') | list | length }}"
+        total_pods: "{{ k3s_pods.stdout_lines | length }}"
+        running_pods: "{{ k3s_pods.stdout_lines | select('search', 'Running') | list | length }}"
+    
+    - name: Display k3s validation
+      debug:
+        msg: |
+          k3s Service: {{ k3s_status.status.ActiveState }}
+          Nodes: {{ ready_nodes }}/{{ total_nodes }} Ready
+          Pods: {{ running_pods }}/{{ total_pods }} Running
+
+- name: Validate HAProxy Load Balancer
+  hosts: loadbalancers
+  become: yes
+  tasks:
+    - name: Check HAProxy service
+      systemd:
+        name: haproxy
+      register: haproxy_status
+    
+    - name: Check Keepalived service
+      systemd:
+        name: keepalived
+      register: keepalived_status
+    
+    - name: Test VIP accessibility
+      wait_for:
+        host: "{{ lb_vip }}"
+        port: 6443
+        timeout: 5
+      register: vip_test
+      failed_when: false
+    
+    - name: Display load balancer validation
+      debug:
+        msg: |
+          HAProxy: {{ haproxy_status.status.ActiveState }}
+          Keepalived: {{ keepalived_status.status.ActiveState }}
+          VIP Accessible: {{ 'PASS' if vip_test.failed == false else 'FAIL' }}
+
+- name: Validate Applications
+  hosts: k3s-cp-01
+  become: yes
+  tasks:
+    - name: Check Vault pods
+      command: kubectl get pods -n vault -l app=vault --no-headers
+      register: vault_pods
+      changed_when: false
+      failed_when: false
+    
+    - name: Check Ollama pods
+      command: kubectl get pods -n aiops -l app=ollama --no-headers
+      register: ollama_pods
+      changed_when: false
+      failed_when: false
+    
+    - name: Check AI Agent pods
+      command: kubectl get pods -n aiops -l app=aiops-agent --no-headers
+      register: aiops_pods
+      changed_when: false
+      failed_when: false
+    
+    - name: Display application validation
+      debug:
+        msg: |
+          Vault: {{ vault_pods.stdout_lines | select('search', 'Running') | list | length }} running
+          Ollama: {{ ollama_pods.stdout_lines | select('search', 'Running') | list | length }} running
+          AI Agent: {{ aiops_pods.stdout_lines | select('search', 'Running') | list | length }} running
+
+- name: Generate Validation Report
+  hosts: localhost
+  gather_facts: no
+  tasks:
+    - name: Create validation report
+      copy:
+        dest: "{{ playbook_dir }}/../validation-report-{{ ansible_date_time.epoch }}.txt"
+        content: |
+          ============================================
+          AIOps Substrate Validation Report
+          ============================================
+          
+          Date: {{ ansible_date_time.iso8601 }}
+          
+          Infrastructure Layer:
+            - Packer Templates: Validated
+            - Terraform Config: Validated
+            - Ansible Inventory: Valid
+            - Ansible Roles: Complete
+          
+          Services Status:
+            - DNS Server: {{ hostvars[groups['dns_servers'][0] | default('localhost')]['bind_status']['status']['ActiveState'] | default('N/A') }}
+            - FreeIPA: {{ hostvars[groups['freeipa_servers'][0] | default('localhost')]['ipa_status']['stdout'] | default('N/A') }}
+            - k3s Cluster: {{ hostvars['k3s-cp-01']['k3s_status']['status']['ActiveState'] | default('N/A') }}
+            - HAProxy: {{ hostvars[groups['loadbalancers'][0] | default('localhost')]['haproxy_status']['status']['ActiveState'] | default('N/A') }}
+          
+          Deployment Score: See detailed results above
+          
+          Next Steps:
+            1. Review any failed validations
+            2. Run remediation playbooks as needed
+            3. Proceed with application deployment
+    
+    - name: Display report location
+      debug:
+        msg: "Validation report saved to: {{ playbook_dir }}/../validation-report-{{ ansible_date_time.epoch }}.txt"

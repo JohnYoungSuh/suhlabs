@@ -1,0 +1,31 @@
+$TTL 86400
+@   IN  SOA ns1.{{ dns_domain }}. admin.{{ dns_domain }}. (
+            {{ ansible_date_time.epoch }}  ; Serial
+            3600                            ; Refresh
+            1800                            ; Retry
+            604800                          ; Expire
+            86400 )                         ; Minimum TTL
+
+; Name servers
+    IN  NS  ns1.{{ dns_domain }}.
+{% if dns_slave_servers is defined %}
+{% for slave in dns_slave_servers %}
+    IN  NS  ns{{ loop.index + 1 }}.{{ dns_domain }}.
+{% endfor %}
+{% endif %}
+
+; A Records
+{% for record in dns_records %}
+{% if record.type == 'A' %}
+{{ record.name }}    IN  A   {{ record.value }}
+{% elif record.type == 'CNAME' %}
+{{ record.name }}    IN  CNAME   {{ record.value }}.{{ dns_domain }}.
+{% elif record.type == 'MX' %}
+{{ record.name }}    IN  MX  {{ record.priority }}  {{ record.value }}.{{ dns_domain }}.
+{% elif record.type == 'TXT' %}
+{{ record.name }}    IN  TXT "{{ record.value }}"
+{% endif %}
+{% endfor %}
+
+; Name server itself
+ns1 IN  A   {{ ansible_host }}

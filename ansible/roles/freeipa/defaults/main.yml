@@ -1,0 +1,47 @@
+---
+# FreeIPA Role Defaults
+
+freeipa_domain: corp.example.com
+freeipa_realm: "{{ freeipa_domain | upper }}"
+freeipa_hostname: ipa
+freeipa_setup_dns: true
+
+freeipa_forwarders:
+  - 8.8.8.8
+  - 1.1.1.1
+
+freeipa_additional_zones:
+  - k3s.corp.example.com
+
+freeipa_dns_records:
+  # Infrastructure
+  - { name: "proxmox-01", type: "A", value: "10.100.0.1" }
+  - { name: "proxmox-02", type: "A", value: "10.100.0.2" }
+  - { name: "proxmox-03", type: "A", value: "10.100.0.3" }
+  
+  # k3s cluster
+  - { name: "k3s-api", type: "A", value: "10.100.0.5" }
+  - { name: "k3s-cp-01", type: "A", value: "10.100.0.10" }
+  - { name: "k3s-cp-02", type: "A", value: "10.100.0.11" }
+  - { name: "k3s-cp-03", type: "A", value: "10.100.0.12" }
+  
+  # Services
+  - { name: "vault", type: "CNAME", value: "k3s-api" }
+  - { name: "aiops", type: "CNAME", value: "k3s-api" }
+
+freeipa_groups:
+  - { name: "k8s-admins", description: "Kubernetes Administrators" }
+  - { name: "k8s-developers", description: "Kubernetes Developers" }
+  - { name: "aiops-users", description: "AI Ops Platform Users" }
+
+freeipa_users:
+  - { username: "svcaiops", first: "AI", last: "Ops Service", email: "aiops@{{ freeipa_domain }}" }
+  - { username: "svcvault", first: "Vault", last: "Service", email: "vault@{{ freeipa_domain }}" }
+
+freeipa_user_groups:
+  - { username: "svcaiops", group: "aiops-users" }
+  - { username: "svcvault", group: "k8s-admins" }
+
+# Admin passwords (should be stored in Ansible Vault)
+# freeipa_admin_password: changeme
+# freeipa_ds_password: changeme

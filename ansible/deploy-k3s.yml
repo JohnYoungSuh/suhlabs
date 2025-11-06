@@ -1,0 +1,90 @@
+---
+# k3s Cluster Deployment Playbook
+
+- name: Pre-flight checks
+  hosts: all
+  become: yes
+  gather_facts: yes
+  tasks:
+    - name: Check connectivity
+      ping:
+    
+    - name: Verify OS compatibility
+      assert:
+        that:
+          - ansible_os_family in ['RedHat', 'Debian']
+          - ansible_distribution_major_version | int >= 8
+        fail_msg: "Unsupported OS: {{ ansible_distribution }} {{ ansible_distribution_version }}"
+        success_msg: "OS check passed: {{ ansible_distribution }} {{ ansible_distribution_version }}"
+    
+    - name: Check available memory
+      assert:
+        that:
+          - ansible_memtotal_mb >= 2048
+        fail_msg: "Insufficient memory: {{ ansible_memtotal_mb }}MB (minimum 2GB required)"
+    
+    - name: Check available disk space
+      assert:
+        that:
+          - ansible_mounts[0].size_available > 10737418240  # 10GB
+        fail_msg: "Insufficient disk space"
+  tags: [preflight]
+
+- name: Deploy HAProxy Load Balancers
+  hosts: loadbalancers
+  become: yes
+  roles:
+    - haproxy
+  tags: [loadbalancer]
+
+- name: Initialize first control plane node
+  hosts: k3s-cp-01
+  become: yes
+  roles:
+    - k3s
+  tags: [control-plane, init]
+
+- name: Join additional control plane nodes
+  hosts: control_plane:!k3s-cp-01
+  become: yes
+  roles:
+    - k3s
+  tags: [control-plane, join]
+
+- name: Join worker nodes
+  hosts: workers
+  become: yes
+  roles:
+    - k3s
+  tags: [workers]
+
+- name: Post-deployment tasks
+  hosts: k3s-cp-01
+  become: yes
+  tasks:
+    - name: Label control plane nodes
+      command: >
+        kubectl label node {{ item }}
+        node-role.kubernetes.io/control-plane=true
+        --overwrite
+      loop: "{{ groups['control_plane'] | map('extract', hostvars, 'node_name') | list }}"
+      changed_when: false
+    
+    - name: Taint control plane nodes (no workloads)
+      command: >
+        kubectl taint node {{ item }}
+        node-role.kubernetes.io/control-plane:NoSchedule
+        --overwrite
+      loop: "{{ groups['control_plane'] | map('extract', hostvars, 'node_name') | list }}"
+      changed_when: false
+      failed_when: false
+    
+    - name: Create namespaces
+      command: kubectl create namespace {{ item }} --dry-run=client -o yaml | kubectl apply -f -
+      loop:
+        - aiops
+        - monitoring
+        - storage
+        - ingress
+      changed_when: false
+  tags: [post-deploy]

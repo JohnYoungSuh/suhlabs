@@ -1,0 +1,33 @@
+---
+# k3s Installation Role - Main Tasks
+
+- name: Include OS-specific variables
+  include_vars: "{{ ansible_os_family }}.yml"
+  tags: [always]
+
+- name: Install prerequisites
+  include_tasks: prerequisites.yml
+  tags: [prerequisites]
+
+- name: Configure system for k3s
+  include_tasks: system-config.yml
+  tags: [system]
+
+- name: Install k3s server (control plane)
+  include_tasks: install-server.yml
+  when: k3s_role == 'server'
+  tags: [k3s, server]
+
+- name: Install k3s agent (worker)
+  include_tasks: install-agent.yml
+  when: k3s_role == 'agent'
+  tags: [k3s, agent]
+
+- name: Configure kubectl
+  include_tasks: kubectl-config.yml
+  when: k3s_role == 'server'
+  tags: [kubectl]
+
+- name: Verify k3s installation
+  include_tasks: verify.yml
+  tags: [verify]

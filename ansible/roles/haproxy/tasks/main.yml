@@ -1,0 +1,68 @@
+---
+# HAProxy Load Balancer Role
+
+- name: Install HAProxy and Keepalived
+  package:
+    name:
+      - haproxy
+      - keepalived
+      - psmisc  # For killall
+    state: present
+
+- name: Configure HAProxy
+  template:
+    src: haproxy.cfg.j2
+    dest: /etc/haproxy/haproxy.cfg
+    validate: 'haproxy -c -f %s'
+  notify: restart haproxy
+
+- name: Configure Keepalived
+  template:
+    src: keepalived.conf.j2
+    dest: /etc/keepalived/keepalived.conf
+  notify: restart keepalived
+
+- name: Create keepalived check script
+  template:
+    src: check_apiserver.sh.j2
+    dest: /etc/keepalived/check_apiserver.sh
+    mode: '0755'
+
+- name: Configure firewall for HAProxy
+  firewalld:
+    port: "{{ item }}"
+    permanent: yes
+    state: enabled
+    immediate: yes
+  loop:
+    - "{{ lb_port }}/tcp"
+    - "8404/tcp"  # HAProxy stats
+  when: ansible_facts.services['firewalld.service'] is defined
+
+- name: Configure firewall for VRRP
+  firewalld:
+    rich_rule: 'rule protocol value="vrrp" accept'
+    permanent: yes
+    state: enabled
+    immediate: yes
+  when: ansible_facts.services['firewalld.service'] is defined
+
+- name: Enable and start HAProxy
+  systemd:
+    name: haproxy
+    enabled: yes
+    state: started
+
+- name: Enable and start Keepalived
+  systemd:
+    name: keepalived
+    enabled: yes
+    state: started
+
+- name: Wait for VIP to be active
+  wait_for:
+    host: "{{ lb_vip }}"
+    port: "{{ lb_port }}"
+    delay: 5
+    timeout: 60
+  when: keepalived_state == 'MASTER'

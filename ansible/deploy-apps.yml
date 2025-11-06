@@ -1,0 +1,161 @@
+---
+# Deploy Applications to k3s Cluster
+
+- name: Deploy Core Services to k3s
+  hosts: k3s-cp-01
+  become: yes
+  vars:
+    kubeconfig: /etc/rancher/k3s/k3s.yaml
+    cluster_dir: "{{ playbook_dir }}/../cluster"
+  
+  tasks:
+    - name: Set KUBECONFIG environment variable
+      set_fact:
+        ansible_env: "{{ ansible_env | combine({'KUBECONFIG': kubeconfig}) }}"
+    
+    - name: Wait for k3s to be ready
+      command: kubectl get nodes
+      register: nodes_check
+      until: nodes_check.rc == 0
+      retries: 30
+      delay: 10
+      changed_when: false
+    
+    - name: Create application namespaces
+      command: kubectl create namespace {{ item }} --dry-run=client -o yaml | kubectl apply -f -
+      loop:
+        - aiops
+        - vault
+        - storage
+        - monitoring
+        - autoscaler
+      changed_when: false
+    
+    - name: Deploy storage provisioner
+      command: kubectl apply -f {{ cluster_dir }}/core/storage/local-path-storage.yaml
+      register: storage_deploy
+      changed_when: "'created' in storage_deploy.stdout or 'configured' in storage_deploy.stdout"
+    
+    - name: Wait for storage provisioner
+      command: kubectl wait --for=condition=available --timeout=300s deployment/local-path-provisioner -n storage
+      changed_when: false
+    
+    - name: Deploy Vault
+      command: kubectl apply -f {{ cluster_dir }}/core/vault/vault.yaml
+      register: vault_deploy
+      changed_when: "'created' in vault_deploy.stdout or 'configured' in vault_deploy.stdout"
+    
+    - name: Wait for Vault to be ready
+      command: kubectl wait --for=condition=ready --timeout=300s pod -l app=vault -n vault
+      changed_when: false
+      failed_when: false
+    
+    - name: Check if Vault is initialized
+      shell: kubectl exec -n vault vault-0 -- vault status -format=json 2>/dev/null || echo '{"initialized":false}'
+      register: vault_status
+      changed_when: false
+    
+    - name: Initialize Vault (if not initialized)
+      shell: |
+        kubectl exec -n vault vault-0 -- vault operator init -format=json > /tmp/vault-init.json
+        cat /tmp/vault-init.json
+      register: vault_init
+      when: (vault_status.stdout | from_json).initialized == false
+    
+    - name: Display Vault initialization keys
+      debug:
+        msg: "IMPORTANT: Save these Vault keys securely!"
+        var: vault_init.stdout
+      when: vault_init.changed
+    
+    - name: Deploy Ollama
+      command: kubectl apply -f {{ cluster_dir }}/core/ollama/ollama.yaml
+      register: ollama_deploy
+      changed_when: "'created' in ollama_deploy.stdout or 'configured' in ollama_deploy.stdout"
+    
+    - name: Wait for Ollama to be ready
+      command: kubectl wait --for=condition=ready --timeout=600s pod -l app=ollama -n aiops
+      changed_when: false
+    
+    - name: Deploy MinIO
+      command: kubectl apply -f {{ cluster_dir }}/core/minio/minio.yaml
+      register: minio_deploy
+      changed_when: "'created' in minio_deploy.stdout or 'configured' in minio_deploy.stdout"
+    
+    - name: Wait for MinIO to be ready
+      command: kubectl wait --for=condition=ready --timeout=300s pod -l app=minio -n aiops
+      changed_when: false
+    
+    - name: Deploy AI Ops Agent
+      command: kubectl apply -f {{ cluster_dir }}/ai-ops-agent/deployment.yaml
+      register: aiops_deploy
+      changed_when: "'created' in aiops_deploy.stdout or 'configured' in aiops_deploy.stdout"
+    
+    - name: Wait for AI Ops Agent to be ready
+      command: kubectl wait --for=condition=ready --timeout=300s pod -l app=aiops-agent -n aiops
+      changed_when: false
+    
+    - name: Deploy Autoscaler
+      command: kubectl apply -f {{ cluster_dir }}/autoscaler/deployment.yaml
+      register: autoscaler_deploy
+      changed_when: "'created' in autoscaler_deploy.stdout or 'configured' in autoscaler_deploy.stdout"
+    
+    - name: Get cluster status
+      command: kubectl get all -A
+      register: cluster_status
+      changed_when: false
+    
+    - name: Display cluster status
+      debug:
+        var: cluster_status.stdout_lines
+    
+    - name: Get NodePort services
+      shell: kubectl get svc -A -o wide | grep NodePort
+      register: nodeport_services
+      changed_when: false
+      failed_when: false
+    
+    - name: Display access information
+      debug:
+        msg: |
+          ============================================
+          Deployment Complete!
+          ============================================
+          
+          Access URLs (use any worker node IP):
+          - AI Ops Agent: http://{{ ansible_host }}:30080
+          - Vault: http://{{ ansible_host }}:8200 (port-forward required)
+          - Ollama: http://{{ ansible_host }}:11434 (ClusterIP)
+          - MinIO Console: http://{{ ansible_host }}:9001 (port-forward required)
+          
+          NodePort Services:
+          {{ nodeport_services.stdout }}
+          
+          To access ClusterIP services, use port-forward:
+          kubectl port-forward -n vault svc/vault 8200:8200
+          kubectl port-forward -n aiops svc/minio 9001:9001
+          
+          To get kubeconfig:
+          make ansible-kubeconfig
+  
+  tags: [apps]
+
+- name: Post-deployment verification
+  hosts: k3s-cp-01
+  become: yes
+  tasks:
+    - name: Run AI agent health check
+      uri:
+        url: "http://localhost:30080/health"
+        method: GET
+        status_code: 200
+      register: health_check
+      failed_when: false
+      retries: 5
+      delay: 10
+    
+    - name: Display health check result
+      debug:
+        var: health_check
+  
+  tags: [verify]

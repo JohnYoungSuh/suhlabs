@@ -1,0 +1,61 @@
+Issue Type,Summary,Description,Priority,Story Points,Epic Link,Sprint,Labels,Assignee,Acceptance Criteria
+Epic,Hardware & Foundation,Setup 2-host consumer hardware with networking,High,,,,"learn-jira,hardware,foundation",,Two hosts operational with network connectivity
+Epic,Base Infrastructure,Deploy k3s cluster with HA configuration,High,,,,"learn-kubernetes,learn-terraform,infrastructure",,k3s cluster with 2 nodes operational
+Epic,Platform Services,Deploy core platform services (DNS/LDAP/Vault),High,,,,"learn-ansible,platform,security",,All platform services accessible and integrated
+Epic,AI Agent & LLM,Implement natural language AI agent with Ollama,High,,,,"learn-llm,learn-python,ai",,AI Agent responds to family requests in natural language
+Epic,Family Services,Deploy family-facing services (media/backup/storage),High,,,,"family-services,usability",,Family members using services daily
+Epic,Security & Monitoring,Implement zero-trust security and monitoring,High,,,,"learn-security,monitoring,best-practice",,Security hardening complete with monitoring
+Epic,Documentation & Training,Create documentation and train family members,Medium,,,,"documentation,training",,Family can self-service basic tasks
+Epic,ML & Anti-Pattern Detection,Implement ML for anti-pattern detection,Medium,,,,"learn-ml,advanced,anti-pattern",,Automatic detection of configuration anti-patterns
+
+Story,Plan Jira Project Structure,Define epics stories tasks and workflow for complete project,High,3,Hardware & Foundation,Sprint 0,"learn-jira,planning",,"Jira project created with all epics|Workflow defined|Story point scale agreed|Learning labels configured"
+Story,Procure Consumer Hardware,Select and purchase 2x consumer-grade mini PCs for cluster,High,2,Hardware & Foundation,Sprint 0,"hardware,procurement",,"2x mini PCs purchased (8GB+ RAM 4+ cores)|Network switch/cables acquired|Power management available|Budget <$1000 total"
+Story,Setup Network Infrastructure,Configure home network with VLANs for cluster,High,5,Hardware & Foundation,Sprint 1,"learn-networking,foundation",,"VLAN for cluster traffic created|Static IPs assigned (192.168.100.10-11)|DNS forwarding configured|Internet connectivity verified"
+Story,Install Base OS on Hosts,Install CentOS Stream 9 on both hosts with cloud-init,Medium,3,Hardware & Foundation,Sprint 1,"learn-ansible,learn-terraform",,"CentOS Stream 9 installed on both hosts|Cloud-init configured|SSH access working|Hosts accessible at 192.168.100.10 and .11"
+Story,Configure Storage Layout,Setup local storage and prepare for distributed storage,Medium,5,Hardware & Foundation,Sprint 1,"storage,learn-kubernetes",,"LVM configured for flexibility|Partitions for OS boot and data created|Storage ready for k3s PVs|Backup strategy documented"
+
+Story,Deploy k3s Cluster Foundation,Install k3s on both hosts in HA configuration,High,8,Base Infrastructure,Sprint 1,"learn-kubernetes,critical",,"k3s installed on both nodes|HA with embedded etcd|kubectl access working|Nodes show Ready status"
+Story,Configure Cluster Networking,Setup cluster networking with MetalLB for LoadBalancer,Medium,5,Base Infrastructure,Sprint 1,"learn-networking,learn-kubernetes",,"MetalLB deployed|IP pool configured (192.168.100.50-60)|LoadBalancer services get IPs|External access working"
+Story,Deploy Local Storage Provisioner,Setup local-path-provisioner for persistent volumes,Medium,3,Base Infrastructure,Sprint 1,"learn-kubernetes,storage",,"local-path-provisioner deployed|StorageClass created and set as default|Test PVC provisions successfully|PVs created on both nodes"
+Story,Setup Cluster Ingress,Deploy Traefik ingress controller with TLS,Medium,5,Base Infrastructure,Sprint 2,"learn-kubernetes,networking",,"Traefik deployed as ingress controller|TLS certificate management configured|Test ingress route accessible|*.homelab.local domain working"
+Story,Implement GitOps with Argo CD,Deploy Argo CD for GitOps workflow,Medium,8,Base Infrastructure,Sprint 2,"learn-gitops,learn-kubernetes,best-practice",,"Argo CD deployed|App-of-apps pattern configured|Git repo connected|Auto-sync working for test app"
+
+Story,Deploy DNS Server,Setup Pi-hole or CoreDNS for internal DNS,High,5,Platform Services,Sprint 2,"learn-networking,family-services",,"DNS server deployed|homelab.local domain resolving|Ad-blocking active (bonus)|Family devices using DNS"
+Story,Deploy FreeIPA for Identity,Setup FreeIPA for authentication and authorization,High,8,Platform Services,Sprint 2,"learn-security,learn-ansible",,"FreeIPA installed and initialized|Users created for family members|SSO working for test service|CA certificates distributed"
+Story,Deploy Vault for Secrets,Setup HashiCorp Vault for secrets management,High,5,Platform Services,Sprint 2,"learn-security,best-practice",,"Vault deployed in HA mode|Unsealed and accessible|Secrets engine configured|Integration with k8s working"
+Story,Setup Certificate Management,Deploy cert-manager integrated with FreeIPA CA,Medium,5,Platform Services,Sprint 2,"learn-security,learn-kubernetes",,"cert-manager deployed|ClusterIssuer for FreeIPA CA created|Auto certificate issuance working|TLS for all services"
+
+Story,Design AI Agent Architecture,Design natural language interface for family,High,5,AI Agent & LLM,Sprint 3,"learn-llm,learn-python,architecture",,"Architecture diagram created|Intent recognition design complete|Permission model defined|API endpoints specified"
+Story,Deploy Ollama LLM Runtime,Setup Ollama with Llama model for local inference,High,5,AI Agent & LLM,Sprint 3,"learn-llm,learn-kubernetes",,"Ollama deployed to k3s|Llama 3.1 8B model downloaded|API accessible|Test inference successful (<2s response)"
+Story,Implement Intent Recognition,Code intent recognition engine with 10+ intents,High,8,AI Agent & LLM,Sprint 3,"learn-python,learn-llm,coding",,"NLInterfaceEngine class implemented|10+ intents recognized|Confidence scoring working|Parameter extraction functional"
+Story,Integrate Permission System,Connect AI agent to FreeIPA for permissions,High,5,AI Agent & LLM,Sprint 3,"learn-python,learn-security",,"LDAP integration working|Group-based permissions enforced|User context passed correctly|Permission denied messages friendly"
+Story,Build Chat Interface,Create simple web chat interface for AI Agent,Medium,8,AI Agent & LLM,Sprint 4,"learn-python,coding,usability",,"FastAPI backend deployed|React frontend working|WebSocket for real-time chat|Mobile-responsive design"
+Story,Implement Safe Execution,Add safety checks and approval workflows,High,5,AI Agent & LLM,Sprint 4,"learn-python,security,best-practice",,"Quota enforcement working|Cost estimation implemented|Approval workflow for sensitive ops|Rollback capability added"
+
+Story,Deploy Plex Media Server,Setup Plex for family media streaming,High,5,Family Services,Sprint 4,"family-services,usability",,"Plex deployed with persistent storage|Media library accessible|Family accounts created|Mobile apps working"
+Story,Setup Nextcloud File Storage,Deploy Nextcloud for family file storage/sharing,High,8,Family Services,Sprint 4,"family-services,usability",,"Nextcloud deployed|WebDAV working|10GB+ storage per family member|Desktop/mobile sync working"
+Story,Implement Photo Backup,Setup automatic phone photo backup to cluster,Medium,5,Family Services,Sprint 4,"family-services,automation",,"Photo backup jobs configured|Automatic upload from phones|Organized by date/person|Accessible via web interface"
+Story,Deploy Home Assistant,Setup Home Assistant for smart home integration,Medium,8,Family Services,Sprint 5,"family-services,iot",,"Home Assistant deployed|Smart devices discovered|Automations working|Voice assistant integration (bonus)"
+Story,Setup Backup Solution,Implement automated backup with Velero or Restic,High,8,Family Services,Sprint 5,"best-practice,reliability",,"Backup solution deployed|Daily automated backups|Offsite backup to cloud (encrypted)|Restore tested successfully"
+
+Story,Implement Zero-Trust Networking,Setup zero-trust with network policies,High,8,Security & Monitoring,Sprint 5,"learn-security,learn-kubernetes,best-practice",,"Network policies deny all by default|Explicit allow rules for services|Pod-to-pod traffic restricted|External traffic controlled"
+Story,Deploy Prometheus Monitoring,Setup Prometheus and Grafana for observability,High,8,Security & Monitoring,Sprint 5,"learn-monitoring,learn-kubernetes",,"Prometheus scraping all targets|Grafana dashboards created|Alerts configured|Family dashboard available"
+Story,Setup Intrusion Detection,Deploy Falco for runtime security monitoring,Medium,5,Security & Monitoring,Sprint 6,"learn-security,advanced",,"Falco deployed|Custom rules for homelab|Alerts to admin|Dashboard showing events"
+Story,Implement Audit Logging,Setup audit logging for all cluster operations,Medium,5,Security & Monitoring,Sprint 6,"learn-security,best-practice",,"Audit logs centralized|User actions logged|90-day retention|Search interface available"
+Story,Security Hardening Checklist,Apply CIS benchmarks and security hardening,High,8,Security & Monitoring,Sprint 6,"learn-security,best-practice,anti-pattern",,"CIS benchmark scan passed|Security contexts on all pods|Secrets encrypted at rest|Regular vulnerability scans automated"
+
+Story,Write User Documentation,Create end-user guide for family members,High,5,Documentation & Training,Sprint 6,"documentation,usability",,"User guide written (<20 pages)|Screenshots included|Common tasks documented|FAQ created"
+Story,Write Admin Documentation,Create admin runbook for maintenance,Medium,5,Documentation & Training,Sprint 6,"documentation,best-practice",,"Runbook created with all procedures|Troubleshooting guide included|Disaster recovery documented|Update procedures written"
+Story,Record Video Tutorials,Create video tutorials for common tasks,Medium,5,Documentation & Training,Sprint 7,"documentation,usability",,"5+ videos created (<5 min each)|How to ask AI agent|How to access services|How to upload photos"
+Story,Conduct Family Training,Train family members on using services,High,3,Documentation & Training,Sprint 7,"training,usability",,"All family members trained|Can access services independently|Can ask AI agent questions|Feedback collected"
+
+Story,Implement Anomaly Detection,Use ML to detect unusual patterns in usage,Medium,8,ML & Anti-Pattern Detection,Sprint 6,"learn-ml,learn-python,advanced",,"Anomaly detection model trained|Baseline usage patterns learned|Alerts on anomalies|False positive rate <10%"
+Story,Build Anti-Pattern Detector,Detect infrastructure configuration anti-patterns,Medium,8,ML & Anti-Pattern Detection,Sprint 6,"learn-ml,anti-pattern,best-practice",,"Anti-pattern detection model created|10+ anti-patterns detected|Suggestions for fixes|Integration with AI Agent"
+Story,Implement Auto-Remediation,Automatically fix detected anti-patterns,Low,13,ML & Anti-Pattern Detection,Sprint 7,"learn-ml,automation,advanced",,"Auto-remediation engine working|Safe-mode for approval required|Rollback on failure|Remediation logs available"
+Story,Create Learning Dashboard,Dashboard showing skills learned and progress,Low,5,ML & Anti-Pattern Detection,Sprint 7,"usability,gamification",,"Dashboard showing Jira/coding/LLM progress|Badges for milestones|Code contributions graphed|Learning resources linked"
+
+Task,Create Jira Project,Create HOMELAB project in Jira,High,1,Hardware & Foundation,Sprint 0,"learn-jira",,"Jira project created with key HOMELAB"
+Task,Configure Workflow,Setup custom workflow for dev/ops/sec,High,1,Hardware & Foundation,Sprint 0,"learn-jira",,"Workflow states configured"
+Task,Import Epics from CSV,Bulk import all epics and stories,Medium,1,Hardware & Foundation,Sprint 0,"learn-jira",,"All epics visible in Jira"
+Task,Create Sprint 0,Setup first sprint for planning,High,1,Hardware & Foundation,Sprint 0,"learn-jira",,"Sprint 0 created with 2-week duration"
+Task,Install Jira CLI Tools,Setup automation for Jira updates,Low,2,Hardware & Foundation,Sprint 0,"learn-jira,automation",,"Can create/update tickets from command line"

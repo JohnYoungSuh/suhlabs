@@ -1,0 +1,160 @@
+---
+# AI Operations Agent
+# FastAPI service that converts natural language to infrastructure actions
+
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: aiops-agent-config
+  namespace: aiops
+data:
+  config.yaml: |
+    ollama:
+      url: http://ollama:11434
+      model: llama3.1:8b
+    
+    vault:
+      url: http://vault.vault.svc.cluster.local:8200
+      mount: secret
+    
+    terraform:
+      backend: http
+      state_url: http://vault.vault.svc.cluster.local:8200/v1/secret/data/terraform
+    
+    ansible:
+      inventory: /etc/ansible/inventory/proxmox.yml
+      playbook_dir: /opt/ansible/playbooks
+    
+    logging:
+      level: INFO
+      format: json
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: aiops-agent
+  namespace: aiops
+  labels:
+    app: aiops-agent
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: aiops-agent
+  template:
+    metadata:
+      labels:
+        app: aiops-agent
+    spec:
+      serviceAccountName: aiops-agent
+      containers:
+        - name: aiops-agent
+          image: registry.corp.example.com/aiops-agent:latest
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 8000
+              name: http
+          env:
+            - name: OLLAMA_URL
+              value: "http://ollama:11434"
+            - name: VAULT_ADDR
+              value: "http://vault.vault.svc.cluster.local:8200"
+            - name: VAULT_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: vault-token
+                  key: token
+            - name: LOG_LEVEL
+              value: "INFO"
+          volumeMounts:
+            - name: config
+              mountPath: /app/config
+          resources:
+            requests:
+              cpu: 500m
+              memory: 1Gi
+            limits:
+              cpu: 2000m
+              memory: 4Gi
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8000
+            initialDelaySeconds: 30
+            periodSeconds: 10
+          readinessProbe:
+            httpGet:
+              path: /ready
+              port: 8000
+            initialDelaySeconds: 15
+            periodSeconds: 5
+      volumes:
+        - name: config
+          configMap:
+            name: aiops-agent-config
+
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: aiops-agent
+  namespace: aiops
+
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: aiops-agent
+rules:
+  - apiGroups: [""]
+    resources: ["pods", "services", "configmaps", "secrets"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+  - apiGroups: ["apps"]
+    resources: ["deployments", "statefulsets"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+  - apiGroups: ["batch"]
+    resources: ["jobs", "cronjobs"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: aiops-agent
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: aiops-agent
+subjects:
+  - kind: ServiceAccount
+    name: aiops-agent
+    namespace: aiops
+
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: vault-token
+  namespace: aiops
+type: Opaque
+stringData:
+  token: "root"  # Replace with actual Vault token
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: aiops-agent
+  namespace: aiops
+  labels:
+    app: aiops-agent
+spec:
+  type: NodePort
+  ports:
+    - name: http
+      port: 8000
+      targetPort: 8000
+      nodePort: 30080
+  selector:
+    app: aiops-agent

@@ -1,0 +1,59 @@
+---
+# System Configuration for k3s
+
+- name: Load kernel modules
+  modprobe:
+    name: "{{ item }}"
+    state: present
+  loop:
+    - overlay
+    - br_netfilter
+
+- name: Ensure kernel modules load on boot
+  copy:
+    dest: /etc/modules-load.d/k3s.conf
+    content: |
+      overlay
+      br_netfilter
+
+- name: Configure sysctl for Kubernetes
+  sysctl:
+    name: "{{ item.name }}"
+    value: "{{ item.value }}"
+    state: present
+    reload: yes
+    sysctl_file: /etc/sysctl.d/k3s.conf
+  loop:
+    - { name: 'net.bridge.bridge-nf-call-iptables', value: '1' }
+    - { name: 'net.bridge.bridge-nf-call-ip6tables', value: '1' }
+    - { name: 'net.ipv4.ip_forward', value: '1' }
+    - { name: 'net.ipv6.conf.all.forwarding', value: '1' }
+
+- name: Disable swap
+  command: swapoff -a
+  changed_when: false
+
+- name: Remove swap from fstab
+  lineinfile:
+    path: /etc/fstab
+    regexp: '.*swap.*'
+    state: absent
+
+- name: Configure firewall for k3s
+  firewalld:
+    port: "{{ item }}"
+    permanent: yes
+    state: enabled
+    immediate: yes
+  loop:
+    - "6443/tcp"   # Kubernetes API
+    - "10250/tcp"  # Kubelet
+    - "8472/udp"   # Flannel VXLAN
+    - "2379-2380/tcp"  # etcd (control plane only)
+  when: ansible_facts.services['firewalld.service'] is defined
+
+- name: Set SELinux to permissive (temporary for k3s)
+  selinux:
+    policy: targeted
+    state: permissive
+  when: ansible_selinux.status == 'enabled'

@@ -1,0 +1,25 @@
+---
+# Verify k3s Installation
+
+- name: Check k3s service status
+  systemd:
+    name: "{{ 'k3s' if k3s_role == 'server' else 'k3s-agent' }}"
+  register: k3s_service_status
+
+- name: Verify k3s is running
+  assert:
+    that:
+      - k3s_service_status.status.ActiveState == "active"
+    fail_msg: "k3s service is not active"
+    success_msg: "k3s service is running"
+
+- name: Get node status (control plane)
+  command: kubectl get nodes
+  register: kubectl_nodes
+  changed_when: false
+  when: k3s_role == 'server'
+
+- name: Display node status
+  debug:
+    var: kubectl_nodes.stdout_lines
+  when: k3s_role == 'server'

@@ -1,0 +1,161 @@
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: autoscaler
+
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: proxmox-autoscaler
+  namespace: autoscaler
+
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: proxmox-autoscaler
+rules:
+  - apiGroups: [""]
+    resources: ["nodes", "pods"]
+    verbs: ["get", "list", "watch", "patch", "delete"]
+  - apiGroups: ["metrics.k8s.io"]
+    resources: ["nodes", "pods"]
+    verbs: ["get", "list"]
+
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: proxmox-autoscaler
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: proxmox-autoscaler
+subjects:
+  - kind: ServiceAccount
+    name: proxmox-autoscaler
+    namespace: autoscaler
+
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: proxmox-credentials
+  namespace: autoscaler
+type: Opaque
+stringData:
+  PROXMOX_HOST: "proxmox.corp.example.com"
+  PROXMOX_USER: "terraform@pam"
+  PROXMOX_TOKEN_NAME: "terraform"
+  PROXMOX_TOKEN_VALUE: "your-token-here"  # Get from Vault
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: autoscaler-config
+  namespace: autoscaler
+data:
+  CPU_SCALE_UP: "70"
+  CPU_SCALE_DOWN: "30"
+  MEMORY_SCALE_UP: "80"
+  MEMORY_SCALE_DOWN: "40"
+  INTERVAL: "60"
+
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: proxmox-autoscaler
+  namespace: autoscaler
+spec:
+  # Run every minute
+  schedule: "*/1 * * * *"
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 2
+      template:
+        metadata:
+          labels:
+            app: proxmox-autoscaler
+        spec:
+          serviceAccountName: proxmox-autoscaler
+          restartPolicy: OnFailure
+          containers:
+            - name: autoscaler
+              image: registry.corp.example.com/proxmox-autoscaler:latest
+              imagePullPolicy: Always
+              command:
+                - python3
+                - /app/autoscaler.py
+              args:
+                - --proxmox-host
+                - $(PROXMOX_HOST)
+                - --proxmox-user
+                - $(PROXMOX_USER)
+                - --proxmox-token-name
+                - $(PROXMOX_TOKEN_NAME)
+                - --proxmox-token-value
+                - $(PROXMOX_TOKEN_VALUE)
+                - --cpu-scale-up
+                - $(CPU_SCALE_UP)
+                - --cpu-scale-down
+                - $(CPU_SCALE_DOWN)
+                - --memory-scale-up
+                - $(MEMORY_SCALE_UP)
+                - --memory-scale-down
+                - $(MEMORY_SCALE_DOWN)
+                - --once
+              env:
+                - name: PROXMOX_HOST
+                  valueFrom:
+                    secretKeyRef:
+                      name: proxmox-credentials
+                      key: PROXMOX_HOST
+                - name: PROXMOX_USER
+                  valueFrom:
+                    secretKeyRef:
+                      name: proxmox-credentials
+                      key: PROXMOX_USER
+                - name: PROXMOX_TOKEN_NAME
+                  valueFrom:
+                    secretKeyRef:
+                      name: proxmox-credentials
+                      key: PROXMOX_TOKEN_NAME
+                - name: PROXMOX_TOKEN_VALUE
+                  valueFrom:
+                    secretKeyRef:
+                      name: proxmox-credentials
+                      key: PROXMOX_TOKEN_VALUE
+                - name: CPU_SCALE_UP
+                  valueFrom:
+                    configMapKeyRef:
+                      name: autoscaler-config
+                      key: CPU_SCALE_UP
+                - name: CPU_SCALE_DOWN
+                  valueFrom:
+                    configMapKeyRef:
+                      name: autoscaler-config
+                      key: CPU_SCALE_DOWN
+                - name: MEMORY_SCALE_UP
+                  valueFrom:
+                    configMapKeyRef:
+                      name: autoscaler-config
+                      key: MEMORY_SCALE_UP
+                - name: MEMORY_SCALE_DOWN
+                  valueFrom:
+                    configMapKeyRef:
+                      name: autoscaler-config
+                      key: MEMORY_SCALE_DOWN
+              resources:
+                requests:
+                  cpu: 100m
+                  memory: 128Mi
+                limits:
+                  cpu: 200m
+                  memory: 256Mi

@@ -1,0 +1,22 @@
+#!/bin/bash
+# Health check script for k3s API server
+
+errorExit() {
+    echo "*** $*" 1>&2
+    exit 1
+}
+
+# Check if HAProxy is running
+if ! pidof haproxy > /dev/null; then
+    errorExit "HAProxy is not running"
+fi
+
+# Check if k3s API is accessible through HAProxy
+curl --silent --max-time 2 --insecure https://localhost:{{ lb_port }}/healthz -o /dev/null || errorExit "Error GET https://localhost:{{ lb_port }}/healthz"
+
+# Check if any backend servers are available
+if ! echo "show servers state" | socat /run/haproxy/admin.sock - | grep -q "k3s_api_backend"; then
+    errorExit "No backend servers available"
+fi
+
+exit 0

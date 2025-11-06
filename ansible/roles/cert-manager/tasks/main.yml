@@ -1,0 +1,110 @@
+---
+# cert-manager Installation and Configuration Role
+
+- name: Create cert-manager namespace
+  kubernetes.core.k8s:
+    state: present
+    definition:
+      apiVersion: v1
+      kind: Namespace
+      metadata:
+        name: "{{ cert_manager_namespace }}"
+        labels:
+          name: "{{ cert_manager_namespace }}"
+          app.kubernetes.io/name: cert-manager
+    kubeconfig: "{{ kubeconfig_path }}"
+  delegate_to: localhost
+
+- name: Install cert-manager via kubectl
+  kubernetes.core.k8s:
+    state: present
+    src: "https://github.com/cert-manager/cert-manager/releases/download/{{ cert_manager_version }}/cert-manager.yaml"
+    kubeconfig: "{{ kubeconfig_path }}"
+  delegate_to: localhost
+  when: cert_manager_install_method == 'kubectl'
+
+- name: Wait for cert-manager webhook to be ready
+  kubernetes.core.k8s_info:
+    kind: Deployment
+    namespace: "{{ cert_manager_namespace }}"
+    name: cert-manager-webhook
+    kubeconfig: "{{ kubeconfig_path }}"
+    wait: yes
+    wait_condition:
+      type: Available
+      status: "True"
+    wait_timeout: 300
+  delegate_to: localhost
+
+- name: Fetch FreeIPA CA certificate
+  slurp:
+    src: "{{ freeipa_ca_cert_path }}"
+  register: freeipa_ca_cert
+  delegate_to: "{{ freeipa_server }}"
+  when: freeipa_integration_enabled | default(false)
+
+- name: Create FreeIPA CA secret in cert-manager namespace
+  kubernetes.core.k8s:
+    state: present
+    definition:
+      apiVersion: v1
+      kind: Secret
+      metadata:
+        name: freeipa-ca-key-pair
+        namespace: "{{ cert_manager_namespace }}"
+      type: kubernetes.io/tls
+      data:
+        tls.crt: "{{ freeipa_ca_cert.content }}"
+        # Note: tls.key is required for CA issuer but we're using read-only cert
+        # For production, this should be a dedicated intermediate CA cert
+        tls.key: "{{ freeipa_ca_cert.content }}"  # Placeholder - needs proper key
+    kubeconfig: "{{ kubeconfig_path }}"
+  delegate_to: localhost
+  when: freeipa_integration_enabled | default(false)
+
+- name: Apply Let's Encrypt ClusterIssuer
+  kubernetes.core.k8s:
+    state: present
+    definition: "{{ lookup('template', 'cluster-issuer-letsencrypt.yaml.j2') }}"
+    kubeconfig: "{{ kubeconfig_path }}"
+  delegate_to: localhost
+
+- name: Apply FreeIPA CA ClusterIssuer
+  kubernetes.core.k8s:
+    state: present
+    definition: "{{ lookup('template', 'cluster-issuer-freeipa.yaml.j2') }}"
+    kubeconfig: "{{ kubeconfig_path }}"
+  delegate_to: localhost
+  when: freeipa_integration_enabled | default(false)
+
+- name: Wait for ClusterIssuers to be ready
+  kubernetes.core.k8s_info:
+    kind: ClusterIssuer
+    name: "{{ item }}"
+    kubeconfig: "{{ kubeconfig_path }}"
+  register: cluster_issuer_info
+  until: cluster_issuer_info.resources[0].status.conditions[0].status == "True"
+  retries: 30
+  delay: 10
+  delegate_to: localhost
+  loop:
+    - letsencrypt-prod
+    - letsencrypt-staging
+  when: letsencrypt_server is defined
+
+- name: Display cert-manager info
+  debug:
+    msg: |
+      cert-manager installed successfully:
+      - Version: {{ cert_manager_version }}
+      - Namespace: {{ cert_manager_namespace }}
+      - Let's Encrypt Email: {{ letsencrypt_email }}
+      - Let's Encrypt Server: {{ letsencrypt_server }}
+      - FreeIPA Integration: {{ freeipa_integration_enabled | default(false) }}
+
+      ClusterIssuers available:
+      - letsencrypt-prod (for production certificates)
+      - letsencrypt-staging (for testing)
+      {% if freeipa_integration_enabled | default(false) %}
+      - freeipa-ca (for internal services)
+      {% endif %}

@@ -20,6 +20,7 @@
         packer-build packer-validate \
         ansible-ping ansible-deploy-k3s ansible-deploy-apps ansible-kubeconfig \
         ansible-deploy-infra ansible-deploy-dns ansible-deploy-freeipa \
+        ansible-deploy-dns-certs ansible-test-cert ansible-install-collections \
         ansible-validate validate-all \
         autoscaler-build autoscaler-deploy autoscaler-status \
         template-clone vm-create vm-list \
@@ -85,14 +86,17 @@ help:
 	@echo "  autoscaler-build Build and push autoscaler container"
 	@echo ""
 	@echo "${GREEN}Ansible Deployment:${RESET}"
-	@echo "  ansible-ping             Test connectivity to all hosts"
-	@echo "  ansible-deploy-k3s       Deploy k3s cluster (HA control plane + workers)"
-	@echo "  ansible-deploy-apps      Deploy applications to k3s"
-	@echo "  ansible-deploy-infra     Deploy infrastructure services (DNS + FreeIPA)"
-	@echo "  ansible-deploy-dns       Deploy only DNS server (BIND)"
-	@echo "  ansible-deploy-freeipa   Deploy only FreeIPA (LDAP + Kerberos + CA)"
-	@echo "  ansible-kubeconfig       Fetch kubeconfig from cluster"
-	@echo "  ansible-validate         Validate complete deployment"
+	@echo "  ansible-ping                 Test connectivity to all hosts"
+	@echo "  ansible-install-collections  Install required Ansible Galaxy collections"
+	@echo "  ansible-deploy-k3s           Deploy k3s cluster (HA control plane + workers)"
+	@echo "  ansible-deploy-apps          Deploy applications to k3s"
+	@echo "  ansible-deploy-infra         Deploy infrastructure services (DNS + FreeIPA)"
+	@echo "  ansible-deploy-dns           Deploy only DNS server (BIND)"
+	@echo "  ansible-deploy-freeipa       Deploy only FreeIPA (LDAP + Kerberos + CA)"
+	@echo "  ansible-deploy-dns-certs     Deploy DNS + cert-manager + Let's Encrypt"
+	@echo "  ansible-test-cert            Test certificate issuance (staging)"
+	@echo "  ansible-kubeconfig           Fetch kubeconfig from cluster"
+	@echo "  ansible-validate             Validate complete deployment"
 	@echo ""
 	@echo "${GREEN}Validation:${RESET}"
 	@echo "  validate-all         Run comprehensive validation (Packer + Terraform + Ansible + K8s)"
@@ -397,6 +401,32 @@ ansible-deploy-freeipa:
 	@echo "WARNING: This requires at least 4GB RAM on the target host"
 	@read -p "Continue? (y/N) " confirm && [ "$$confirm" = "y" ] || exit 1
 	$(ANSIBLE) -i $(ANSIBLE_INVENTORY) $(ANSIBLE_PLAYBOOK_DIR)/deploy-infrastructure-services.yml --tags freeipa
+
+ansible-deploy-dns-certs:
+	@echo "${GREEN}Deploying DNS and Certificate Management...${RESET}"
+	@echo "This will deploy:"
+	@echo "  - BIND DNS with suh.family.suhlabs.com domain"
+	@echo "  - CAA records for Let's Encrypt"
+	@echo "  - cert-manager to Kubernetes"
+	@echo "  - Let's Encrypt ClusterIssuers (prod + staging)"
+	@echo "  - FreeIPA CA ClusterIssuer"
+	@echo ""
+	@echo "${YELLOW}Prerequisites:${RESET}"
+	@echo "  1. FreeIPA server must be deployed first"
+	@echo "  2. k3s cluster must be running"
+	@echo "  3. kubectl must be configured"
+	@echo "  4. Run: ansible-galaxy collection install -r $(ANSIBLE_PLAYBOOK_DIR)/requirements.yml"
+	@echo ""
+	@read -p "Continue? (y/N) " confirm && [ "$$confirm" = "y" ] || exit 1
+	$(ANSIBLE) -i $(ANSIBLE_INVENTORY) $(ANSIBLE_PLAYBOOK_DIR)/deploy-dns-and-certs.yml
+
+ansible-test-cert:
+	@echo "${GREEN}Testing certificate issuance (staging)...${RESET}"
+	$(ANSIBLE) -i $(ANSIBLE_INVENTORY) $(ANSIBLE_PLAYBOOK_DIR)/deploy-dns-and-certs.yml --tags test
+
+ansible-install-collections:
+	@echo "${GREEN}Installing Ansible Galaxy collections...${RESET}"
+	ansible-galaxy collection install -r $(ANSIBLE_PLAYBOOK_DIR)/requirements.yml
 
 ansible-validate:
 	@echo "${GREEN}Running comprehensive deployment validation...${RESET}"

@@ -1,0 +1,15 @@
+---
+# cert-manager Role Handlers
+
+- name: Restart cert-manager
+  kubernetes.core.k8s:
+    state: restarted
+    kind: Deployment
+    namespace: "{{ cert_manager_namespace }}"
+    name: "{{ item }}"
+    kubeconfig: "{{ kubeconfig_path }}"
+  delegate_to: localhost
+  loop:
+    - cert-manager
+    - cert-manager-webhook
+    - cert-manager-cainjector

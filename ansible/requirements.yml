@@ -1,0 +1,16 @@
+---
+# Ansible Galaxy Requirements
+# Install with: ansible-galaxy collection install -r requirements.yml
+
+collections:
+  # Kubernetes collection for cert-manager and k8s resource management
+  - name: kubernetes.core
+    version: ">=2.4.0"
+
+  # Community general collection for various utilities
+  - name: community.general
+    version: ">=7.0.0"
+
+  # POSIX collection for system tasks
+  - name: ansible.posix
+    version: ">=1.5.0"

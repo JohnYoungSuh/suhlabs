@@ -1,0 +1,72 @@
+---
+# Family DNS Configuration
+# Domain pattern: suh.family.suhlabs.com ($fam_name.family.suhlabs.com)
+
+dns_domain: suh.family.suhlabs.com
+dns_server_type: master
+dns_forwarders:
+  - 8.8.8.8
+  - 1.1.1.1
+
+dns_reverse_zone: "100.10.in-addr.arpa"
+dns_network: "10.100.0.0/24"
+
+dns_enable_dnssec: false
+dns_enable_dynamic_updates: true
+dns_dynamic_zone: "k3s.{{ dns_domain }}"
+
+dns_allow_query:
+  - localnets
+  - localhost
+
+dns_allow_transfer:
+  - localhost
+
+# Email for Let's Encrypt ACME registration
+letsencrypt_email: "admin@{{ dns_domain }}"
+
+# DNS Records for Family Infrastructure
+dns_records:
+  # Infrastructure
+  - { name: "proxmox-01", type: "A", value: "10.100.0.1" }
+  - { name: "proxmox-02", type: "A", value: "10.100.0.2" }
+  - { name: "proxmox-03", type: "A", value: "10.100.0.3" }
+
+  # Load Balancers
+  - { name: "lb-01", type: "A", value: "10.100.0.6" }
+  - { name: "lb-02", type: "A", value: "10.100.0.7" }
+  - { name: "k3s-api", type: "A", value: "10.100.0.5" }  # VIP for Kubernetes API
+
+  # Control Plane
+  - { name: "k3s-cp-01", type: "A", value: "10.100.0.10" }
+  - { name: "k3s-cp-02", type: "A", value: "10.100.0.11" }
+  - { name: "k3s-cp-03", type: "A", value: "10.100.0.12" }
+
+  # Workers
+  - { name: "k3s-worker-01", type: "A", value: "10.100.0.20" }
+  - { name: "k3s-worker-02", type: "A", value: "10.100.0.21" }
+  - { name: "k3s-worker-03", type: "A", value: "10.100.0.22" }
+
+  # Email Server (to be deployed)
+  - { name: "mail", type: "A", value: "10.100.0.30" }
+  - { name: "@", type: "MX", priority: 10, value: "mail" }
+
+  # Kubernetes Ingress Services (via ingress controller on VIP)
+  - { name: "grafana", type: "A", value: "10.100.0.5" }
+  - { name: "vault", type: "A", value: "10.100.0.5" }
+  - { name: "portal", type: "A", value: "10.100.0.5" }
+  - { name: "aiops", type: "A", value: "10.100.0.5" }
+
+  # Wildcard for all k3s ingress (fallback)
+  - { name: "*.k3s", type: "A", value: "10.100.0.5" }
+  - { name: "*", type: "A", value: "10.100.0.5" }  # Wildcard for cert validation
+
+  # CAA record for Let's Encrypt
+  - { name: "@", type: "CAA", value: "0 issue \"letsencrypt.org\"" }
+  - { name: "@", type: "CAA", value: "0 issuewild \"letsencrypt.org\"" }
+
+  # SPF record for email (anti-spam)
+  - { name: "@", type: "TXT", value: "v=spf1 mx ~all" }
+
+  # DMARC record for email security
+  - { name: "_dmarc", type: "TXT", value: "v=DMARC1; p=quarantine; rua=mailto:dmarc@{{ dns_domain }}" }

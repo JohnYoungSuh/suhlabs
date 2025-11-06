@@ -1,0 +1,25 @@
+---
+# cert-manager installation
+# This is a placeholder that references the upstream cert-manager installation
+#
+# Installation methods:
+# 1. kubectl apply (used by Ansible):
+#    kubectl apply -f https://github.com/cert-manager/cert-manager/releases/download/v1.13.3/cert-manager.yaml
+#
+# 2. Helm (alternative):
+#    helm repo add jetstack https://charts.jetstack.io
+#    helm repo update
+#    helm install cert-manager jetstack/cert-manager --namespace cert-manager --version v1.13.3 --set installCRDs=true
+#
+# This file serves as documentation and will be applied by the Ansible playbook
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: cert-manager-install-info
+  namespace: cert-manager
+data:
+  version: "v1.13.3"
+  installation-method: "kubectl apply -f URL"
+  upstream-url: "https://github.com/cert-manager/cert-manager/releases/download/v1.13.3/cert-manager.yaml"
+  documentation: "https://cert-manager.io/docs/"

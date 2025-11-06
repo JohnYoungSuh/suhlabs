@@ -1,0 +1,26 @@
+---
+# cert-manager Role Defaults
+
+# cert-manager version
+cert_manager_version: "v1.13.3"
+
+# cert-manager installation method: kubectl, helm
+cert_manager_install_method: kubectl
+
+# Namespace for cert-manager
+cert_manager_namespace: cert-manager
+
+# Let's Encrypt configuration
+letsencrypt_email: "admin@{{ dns_domain }}"
+letsencrypt_server: "production"  # production or staging
+
+# Ingress class for HTTP-01 challenges
+cert_manager_ingress_class: nginx
+
+# FreeIPA CA integration
+freeipa_integration_enabled: true
+freeipa_server: "ipa.{{ dns_domain }}"
+freeipa_ca_cert_path: "/etc/ipa/ca.crt"
+
+# Kubeconfig path (if not using in-cluster config)
+kubeconfig_path: "{{ ansible_env.HOME }}/.kube/config"

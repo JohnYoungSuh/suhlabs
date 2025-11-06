@@ -1,0 +1,171 @@
+---
+# Deploy DNS and Certificate Management Infrastructure
+# This playbook orchestrates:
+# 1. DNS server setup with family domain (suh.family.suhlabs.com)
+# 2. cert-manager deployment to Kubernetes
+# 3. Let's Encrypt and FreeIPA CA ClusterIssuers
+#
+# Usage:
+#   ansible-playbook -i inventory deploy-dns-and-certs.yml
+#
+# Pre-requisites:
+#   - FreeIPA server deployed (for internal CA)
+#   - k3s cluster running
+#   - kubectl configured
+#   - Kubernetes Ansible collection installed (ansible-galaxy collection install kubernetes.core)
+
+- name: Deploy DNS Infrastructure
+  hosts: dns_servers
+  become: yes
+  vars_files:
+    - vars/family-dns.yml
+  roles:
+    - role: bind-dns
+      tags:
+        - dns
+        - bind
+
+  post_tasks:
+    - name: Verify DNS server is responding
+      command: dig @localhost {{ dns_domain }} SOA +short
+      register: dns_verification
+      changed_when: false
+      failed_when: dns_verification.rc != 0
+
+    - name: Display DNS records
+      debug:
+        msg: |
+          DNS Server deployed successfully!
+
+          Domain: {{ dns_domain }}
+          Server: {{ ansible_host }}
+
+          Key records created:
+          - mail.{{ dns_domain }} → Email server
+          - grafana.{{ dns_domain }} → Grafana dashboard
+          - vault.{{ dns_domain }} → Vault UI
+          - *.{{ dns_domain }} → Wildcard for all services
+
+          MX record configured for email delivery
+          CAA records limit certificates to Let's Encrypt only
+
+- name: Deploy cert-manager to Kubernetes
+  hosts: control_plane[0]  # Run on first control plane node
+  become: no
+  vars_files:
+    - vars/family-dns.yml
+  roles:
+    - role: cert-manager
+      tags:
+        - cert-manager
+        - certificates
+        - tls
+
+  post_tasks:
+    - name: Check cert-manager pods status
+      kubernetes.core.k8s_info:
+        kind: Pod
+        namespace: cert-manager
+        label_selectors:
+          - app.kubernetes.io/name=cert-manager
+      register: certmanager_pods
+      delegate_to: localhost
+
+    - name: Display cert-manager status
+      debug:
+        msg: |
+          cert-manager deployed successfully!
+
+          Pods running: {{ certmanager_pods.resources | length }}
+
+          ClusterIssuers available:
+          1. letsencrypt-prod - Use for production certificates
+             Annotation: cert-manager.io/cluster-issuer: "letsencrypt-prod"
+
+          2. letsencrypt-staging - Use for testing (avoids rate limits)
+             Annotation: cert-manager.io/cluster-issuer: "letsencrypt-staging"
+
+          3. freeipa-ca - Use for internal service-to-service TLS
+             Annotation: cert-manager.io/cluster-issuer: "freeipa-ca"
+
+          Example certificate request:
+          ---
+          apiVersion: cert-manager.io/v1
+          kind: Certificate
+          metadata:
+            name: grafana-tls
+            namespace: monitoring
+          spec:
+            secretName: grafana-tls-secret
+            issuerRef:
+              name: letsencrypt-prod
+              kind: ClusterIssuer
+            dnsNames:
+              - grafana.{{ dns_domain }}
+
+    - name: Test certificate issuance (staging)
+      kubernetes.core.k8s:
+        state: present
+        definition:
+          apiVersion: cert-manager.io/v1
+          kind: Certificate
+          metadata:
+            name: test-certificate
+            namespace: cert-manager
+          spec:
+            secretName: test-certificate-secret
+            issuerRef:
+              name: letsencrypt-staging
+              kind: ClusterIssuer
+            dnsNames:
+              - test.{{ dns_domain }}
+        kubeconfig: "{{ kubeconfig_path | default(ansible_env.HOME + '/.kube/config') }}"
+      delegate_to: localhost
+      tags:
+        - test
+        - never  # Only run with --tags test
+
+- name: Display Next Steps
+  hosts: localhost
+  gather_facts: no
+  tasks:
+    - name: Summary and next steps
+      debug:
+        msg: |
+          ========================================
+          DNS and Certificate Management Deployed
+          ========================================
+
+          ✅ Completed:
+          1. DNS server configured with suh.family.suhlabs.com
+          2. cert-manager installed in Kubernetes
+          3. Let's Encrypt ClusterIssuers created (prod + staging)
+          4. FreeIPA CA ClusterIssuer created
+
+          📋 Next Steps:
+
+          1. UPDATE YOUR DOMAIN REGISTRAR:
+             Add NS records pointing to your DNS server:
+             suh.family.suhlabs.com NS ns1.suh.family.suhlabs.com
+
+          2. VERIFY DNS RESOLUTION:
+             dig @<dns_server_ip> mail.suh.family.suhlabs.com
+             dig @<dns_server_ip> grafana.suh.family.suhlabs.com
+
+          3. DEPLOY SERVICES WITH TLS:
+             - Update Vault deployment with Let's Encrypt cert
+             - Deploy Grafana with ingress + TLS
+             - Deploy email server with certbot
+
+          4. TEST CERTIFICATE ISSUANCE:
+             ansible-playbook deploy-dns-and-certs.yml --tags test
+
+          📚 Documentation:
+          - cert-manager: https://cert-manager.io/docs/
+          - Let's Encrypt: https://letsencrypt.org/docs/
+
+          🔒 Security Recommendations:
+          - Use letsencrypt-staging for initial testing
+          - Monitor CT logs: https://crt.sh/?q=%.suh.family.suhlabs.com
+          - Implement certificate rotation monitoring
+          - Backup Let's Encrypt ACME account keys

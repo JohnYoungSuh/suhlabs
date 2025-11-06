@@ -1,0 +1,69 @@
+---
+# Let's Encrypt ClusterIssuer - Production
+# Uses ACME protocol for automatic certificate issuance
+# Certificates trusted by all browsers and devices
+apiVersion: cert-manager.io/v1
+kind: ClusterIssuer
+metadata:
+  name: letsencrypt-prod
+  labels:
+    app.kubernetes.io/name: cert-manager
+    app.kubernetes.io/component: cluster-issuer
+spec:
+  acme:
+    # Let's Encrypt production server
+    server: https://acme-v02.api.letsencrypt.org/directory
+
+    # Email for ACME registration and renewal notifications
+    email: ${LETSENCRYPT_EMAIL}  # Will be substituted by Ansible
+
+    # Secret to store ACME account private key
+    privateKeySecretRef:
+      name: letsencrypt-prod-account-key
+
+    # Solvers for ACME challenges
+    solvers:
+      # HTTP-01 challenge (requires port 80 accessible)
+      # Used for most certificates
+      - http01:
+          ingress:
+            class: nginx  # or traefik, depending on ingress controller
+        selector: {}
+
+      # DNS-01 challenge (alternative, more secure)
+      # Uncomment and configure if using DNS provider API
+      # - dns01:
+      #     cloudflare:
+      #       email: ${CLOUDFLARE_EMAIL}
+      #       apiTokenSecretRef:
+      #         name: cloudflare-api-token
+      #         key: api-token
+      #   selector:
+      #     dnsZones:
+      #       - "suhlabs.com"
+
+---
+# Let's Encrypt ClusterIssuer - Staging (for testing)
+# Use this for testing to avoid rate limits
+apiVersion: cert-manager.io/v1
+kind: ClusterIssuer
+metadata:
+  name: letsencrypt-staging
+  labels:
+    app.kubernetes.io/name: cert-manager
+    app.kubernetes.io/component: cluster-issuer
+spec:
+  acme:
+    # Let's Encrypt staging server (higher rate limits, untrusted certs)
+    server: https://acme-staging-v02.api.letsencrypt.org/directory
+
+    email: ${LETSENCRYPT_EMAIL}
+
+    privateKeySecretRef:
+      name: letsencrypt-staging-account-key
+
+    solvers:
+      - http01:
+          ingress:
+            class: nginx
+        selector: {}

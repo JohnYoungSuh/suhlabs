@@ -14,7 +14,7 @@ $TTL 86400
 {% endfor %}
 {% endif %}
 
-; A Records
+; DNS Records
 {% for record in dns_records %}
 {% if record.type == 'A' %}
 {{ record.name }}    IN  A   {{ record.value }}
@@ -24,6 +24,8 @@ $TTL 86400
 {{ record.name }}    IN  MX  {{ record.priority }}  {{ record.value }}.{{ dns_domain }}.
 {% elif record.type == 'TXT' %}
 {{ record.name }}    IN  TXT "{{ record.value }}"
+{% elif record.type == 'CAA' %}
+{{ record.name }}    IN  CAA {{ record.value }}
 {% endif %}
 {% endfor %}
 

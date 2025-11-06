@@ -1,0 +1,12 @@
+---
+# Argo CD Installation for GitOps
+# Namespace
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: argocd
+
+---
+# Install Argo CD (using official manifests)
+# Run: kubectl apply -n argocd -f https://raw.githubusercontent.com/argoproj/argo-cd/stable/manifests/install.yaml
+# This is a placeholder - actual installation uses official manifests

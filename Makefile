@@ -1,23 +1,20 @@
 # =============================================================================
 # AIOps Substrate – Makefile
-# Supports: Local (Docker Desktop + WSL2 + k3s) → Production (Proxmox + k3s)
-# Author: Infrastructure Architect & AI Ops Strategist
-# Version: 2.0
+# Architecture: Backend (Cloud SaaS) + Appliance (Raspberry Pi)
+# Supports: Local (Docker) → Proxmox (k3s) → AWS (EKS)
+# Version: 3.0
 # =============================================================================
 
 .PHONY: all help \
-        dev-up dev-down dev-logs \
-        kind-up kind-down kind-export \
-        init init-local init-prod \
-        plan plan-local plan-prod \
-        apply apply-local apply-prod \
-        test test-local test-prod test-ai \
+        dev-up dev-down dev-logs dev-restart \
+        backend-up backend-down backend-logs \
+        appliances-up appliances-down appliances-logs \
+        ollama-pull ollama-model \
+        test test-backend test-appliance test-integration \
         lint format validate \
-        sbom sign \
-        vault-up vault-down \
-        ollama-pull \
-        migrate-state \
-        clean
+        build-backend build-appliance build-all \
+        deploy deploy-proxmox deploy-aws \
+        clean clean-all
 
 # -----------------------------------------------------------------------------
 # Configuration
@@ -27,24 +24,29 @@ SHELL := /bin/bash
 
 # Environment switch
 ENV ?= local
-TF_BACKEND_LOCAL := infra/local/backend.hcl
-TF_BACKEND_PROD  := infra/proxmox/backend.hcl
 
 # Tools
+DOCKER    := docker
+COMPOSE   := docker compose
 TERRAFORM := terraform
 ANSIBLE   := ansible-playbook
 KUBECTL   := kubectl
-KIND      := kind
-DOCKER    := docker
-COMPOSE   := docker-compose -f bootstrap/docker-compose.yml
-VAULT     := vault
-OLLAMA    := ollama
+PYTHON    := python3
 SYFT      := syft
 COSIGN    := cosign
+
+# Project paths
+BACKEND_DIR   := backend
+APPLIANCE_DIR := appliance
+INFRA_DIR     := infra
+
+# Docker Compose profiles
+COMPOSE_FILE := docker-compose.yml
 
 # Colors
 GREEN  := $(shell tput -Txterm setaf 2)
 YELLOW := $(shell tput -Txterm setaf 3)
+BLUE   := $(shell tput -Txterm setaf 4)
 RESET  := $(shell tput -Txterm sgr0)
 
 # -----------------------------------------------------------------------------
@@ -57,205 +59,261 @@ all: help
 # -----------------------------------------------------------------------------
 help:
 	@echo ""
-	@echo "${YELLOW}AIOps Substrate – Makefile${RESET}"
-	@echo "Usage: make <target> [ENV=local|prod]"
+	@echo "${YELLOW}╔═══════════════════════════════════════════════════╗${RESET}"
+	@echo "${YELLOW}║  AIOps Substrate – Backend + Appliance Platform  ║${RESET}"
+	@echo "${YELLOW}╚═══════════════════════════════════════════════════╝${RESET}"
 	@echo ""
-	@echo "${GREEN}Local Dev (Docker Desktop + WSL2):${RESET}"
-	@echo "  dev-up           Start full local stack (Vault, Ollama, MinIO, k3s)"
-	@echo "  dev-down         Stop and clean local stack"
-	@echo "  kind-up          Create kind cluster (aiops-dev)"
-	@echo "  kind-down        Delete kind cluster"
-	@echo "  apply-local      Apply Terraform (local kind)"
-	@echo "  test-ai          Test AI agent with NL request"
+	@echo "${BLUE}📦 Local Development (Docker):${RESET}"
+	@echo "  dev-up           Start full stack (backend + 3 appliances)"
+	@echo "  dev-down         Stop all services"
+	@echo "  dev-logs         View logs from all services"
+	@echo "  dev-restart      Restart all services"
 	@echo ""
-	@echo "${GREEN}Production (Proxmox):${RESET}"
-	@echo "  init-prod        Initialize Terraform with Proxmox backend"
-	@echo "  apply-prod       Apply Terraform to Proxmox"
-	@echo "  migrate-state    Migrate state from local → prod"
+	@echo "${BLUE}🔧 Backend Services:${RESET}"
+	@echo "  backend-up       Start backend only (API, LLM, DB)"
+	@echo "  backend-down     Stop backend services"
+	@echo "  backend-logs     View backend logs"
+	@echo "  ollama-model     Pull Llama 3.2 3B model"
 	@echo ""
-	@echo "${GREEN}Shared:${RESET}"
+	@echo "${BLUE}📱 Appliances:${RESET}"
+	@echo "  appliances-up    Start simulated appliances"
+	@echo "  appliances-down  Stop appliances"
+	@echo "  appliances-logs  View appliance logs"
+	@echo ""
+	@echo "${BLUE}🏗️  Build:${RESET}"
+	@echo "  build-backend    Build backend Docker image"
+	@echo "  build-appliance  Build appliance Docker image"
+	@echo "  build-all        Build all images"
+	@echo ""
+	@echo "${BLUE}🧪 Testing:${RESET}"
+	@echo "  test             Run all tests"
+	@echo "  test-backend     Test backend API"
+	@echo "  test-appliance   Test appliance services"
+	@echo "  test-integration Test backend + appliance integration"
+	@echo ""
+	@echo "${BLUE}☁️  Deployment:${RESET}"
+	@echo "  deploy-proxmox   Deploy to Proxmox (k3s cluster)"
+	@echo "  deploy-aws       Deploy to AWS (EKS cluster)"
+	@echo ""
+	@echo "${BLUE}🔍 Quality:${RESET}"
 	@echo "  lint             Run all linters"
-	@echo "  sbom             Generate SBOM (Syft)"
-	@echo "  sign             Sign artifacts (cosign)"
-	@echo "  clean            Remove .terraform, plans, logs"
+	@echo "  format           Format code (Python, Terraform)"
+	@echo "  validate         Validate configurations"
+	@echo ""
+	@echo "${BLUE}🧹 Cleanup:${RESET}"
+	@echo "  clean            Clean build artifacts"
+	@echo "  clean-all        Clean everything (including volumes)"
+	@echo ""
+	@echo "${GREEN}Quick Start:${RESET}"
+	@echo "  1. make ollama-model     # Pull LLM model (one-time)"
+	@echo "  2. make dev-up           # Start everything"
+	@echo "  3. Visit http://localhost:8000"
 	@echo ""
 
 # -----------------------------------------------------------------------------
-# Local Stack: Docker Compose + kind
+# Local Development (Docker Compose)
 # -----------------------------------------------------------------------------
-dev-up: vault-up ollama-pull
-	@echo "${GREEN}Starting local dev stack...${RESET}"
+
+# Start full stack (backend + appliances)
+dev-up:
+	@echo "${GREEN}🚀 Starting full AIOps development environment...${RESET}"
 	$(COMPOSE) up -d
-	@echo "Waiting for Vault..."
-	@sleep 5
-	$(VAULT) login root || true
-	@echo "Local stack ready: http://localhost:8200 (token: root)"
+	@echo ""
+	@echo "${GREEN}✅ Stack started successfully!${RESET}"
+	@echo ""
+	@echo "  Backend API:     http://localhost:8000"
+	@echo "  API Docs:        http://localhost:8000/docs"
+	@echo "  Ollama:          http://localhost:11434"
+	@echo "  PostgreSQL:      localhost:5432 (user: aiops, pass: aiops123)"
+	@echo "  Redis:           localhost:6379"
+	@echo ""
+	@echo "  Appliance 001:   http://localhost:8001 (DNS: 5301, Samba: 4451)"
+	@echo "  Appliance 002:   http://localhost:8002 (DNS: 5302, Samba: 4452)"
+	@echo "  Appliance 003:   http://localhost:8003 (DNS: 5303, Samba: 4453)"
+	@echo ""
+	@echo "${YELLOW}💡 Tip: Run 'make dev-logs' to view logs${RESET}"
+	@echo ""
 
 dev-down:
-	@echo "${GREEN}Stopping local dev stack...${RESET}"
+	@echo "${YELLOW}Stopping all services...${RESET}"
+	$(COMPOSE) down
+
+dev-down-clean:
+	@echo "${YELLOW}Stopping and removing volumes...${RESET}"
 	$(COMPOSE) down -v
-	$(MAKE) kind-down
 
 dev-logs:
 	$(COMPOSE) logs -f
 
-vault-up:
-	@echo "${GREEN}Starting Vault (dev mode)...${RESET}"
-	$(COMPOSE) up -d vault
+dev-restart:
+	@echo "${YELLOW}Restarting services...${RESET}"
+	$(COMPOSE) restart
 
-vault-down:
-	$(COMPOSE) rm -fsv vault
-
-ollama-pull:
-	@echo "${GREEN}Pulling Llama3.1 for AI agent...${RESET}"
-	$(OLLAMA) pull llama3.1:8b
+dev-status:
+	$(COMPOSE) ps
 
 # -----------------------------------------------------------------------------
-# Kubernetes: kind (local)
+# Backend Services
 # -----------------------------------------------------------------------------
-kind-up:
-	@echo "${GREEN}Creating kind cluster: aiops-dev${RESET}"
-	$(KIND) create cluster --name aiops-dev --config bootstrap/kind-cluster.yaml --wait 2m
-	$(KUBECTL) cluster-info
-	@echo "Kubeconfig exported to ~/.kube/config"
 
-kind-down:
-	@echo "${GREEN}Deleting kind cluster...${RESET}"
-	$(KIND) delete cluster --name aiops-dev || true
+backend-up:
+	@echo "${GREEN}Starting backend services only...${RESET}"
+	$(COMPOSE) up -d postgres redis ollama backend-api
+	@echo "Backend ready at http://localhost:8000"
 
-kind-export:
-	$(KIND) export kubeconfig --name aiops-dev
+backend-down:
+	$(COMPOSE) stop postgres redis ollama backend-api
+
+backend-logs:
+	$(COMPOSE) logs -f backend-api
+
+backend-shell:
+	$(COMPOSE) exec backend-api /bin/bash
+
+# Pull Ollama model
+ollama-model:
+	@echo "${GREEN}Pulling Llama 3.2 3B model...${RESET}"
+	$(DOCKER) exec aiops-ollama ollama pull llama3.2:3b
+	@echo "${GREEN}Model pulled successfully${RESET}"
+
+ollama-list:
+	$(DOCKER) exec aiops-ollama ollama list
 
 # -----------------------------------------------------------------------------
-# Terraform: Dual Backend Support
+# Appliances
 # -----------------------------------------------------------------------------
-init: init-$(ENV)
 
-init-local:
-	@echo "${GREEN}Initializing Terraform (local backend)${RESET}"
-	cd infra/local && $(TERRAFORM) init -backend-config="../$(TF_BACKEND_LOCAL)"
+appliances-up:
+	@echo "${GREEN}Starting appliances...${RESET}"
+	$(COMPOSE) up -d appliance-001 appliance-002 appliance-003
 
-init-prod:
-	@echo "${GREEN}Initializing Terraform (Proxmox backend)${RESET}"
-	cd infra/proxmox && $(TERRAFORM) init -backend-config="../$(TF_BACKEND_PROD)"
+appliances-down:
+	$(COMPOSE) stop appliance-001 appliance-002 appliance-003
 
-plan: plan-$(ENV)
+appliances-logs:
+	$(COMPOSE) logs -f appliance-001 appliance-002 appliance-003
 
-plan-local:
-	@echo "${GREEN}Planning local infrastructure...${RESET}"
-	cd infra/local && $(TERRAFORM) plan -out=plan.tfplan
+appliance-shell:
+	@echo "Select appliance (1-3):"
+	@read -p "Appliance: " num; \
+	$(COMPOSE) exec appliance-00$$num /bin/bash
 
-plan-prod:
-	@echo "${GREEN}Planning Proxmox infrastructure...${RESET}"
-	cd infra/proxmox && $(TERRAFORM) plan -out=plan.tfplan
+# -----------------------------------------------------------------------------
+# Build
+# -----------------------------------------------------------------------------
 
-apply: apply-$(ENV)
+build-backend:
+	@echo "${GREEN}Building backend Docker image...${RESET}"
+	$(DOCKER) build -t aiops-backend:latest $(BACKEND_DIR)/api
 
-apply-local: init-local plan-local
-	@echo "${GREEN}Applying local infrastructure...${RESET}"
-	cd infra/local && $(TERRAFORM) apply -auto-approve plan.tfplan
+build-appliance:
+	@echo "${GREEN}Building appliance Docker image...${RESET}"
+	$(DOCKER) build -t aiops-appliance:latest $(APPLIANCE_DIR)
 
-apply-prod: init-prod plan-prod
-	@echo "${GREEN}Applying to Proxmox...${RESET}"
-	cd infra/proxmox && $(TERRAFORM) apply -auto-approve plan.tfplan
-
-migrate-state:
-	@echo "${YELLOW}Migrating Terraform state: local → prod${RESET}"
-	@echo "1. Backup current state"
-	cd infra/local && $(TERRAFORM) state pull > ../backup-local.tfstate
-	@echo "2. Reconfigure backend"
-	cd infra/proxmox && $(TERRAFORM) init -migrate-state -force-copy -backend-config="../$(TF_BACKEND_PROD)"
-	@echo "Migration complete. Verify with 'terraform state list'"
+build-all: build-backend build-appliance
+	@echo "${GREEN}All images built successfully${RESET}"
 
 # -----------------------------------------------------------------------------
 # Testing
 # -----------------------------------------------------------------------------
-test: test-$(ENV)
 
-test-local: apply-local
-	@echo "${GREEN}Running local tests...${RESET}"
-	$(MAKE) test-infra-local
-	$(MAKE) test-services-local
-	$(MAKE) test-ai
+test: test-backend test-appliance
 
-test-prod: apply-prod
-	@echo "${GREEN}Running prod tests...${RESET}"
-	$(MAKE) test-infra-prod
-	$(MAKE) test-services-prod
-	$(MAKE) test-ai-prod
+test-backend:
+	@echo "${GREEN}Testing backend API...${RESET}"
+	@echo "Checking API health..."
+	curl -f http://localhost:8000/health || echo "Backend not running. Start with 'make backend-up'"
 
-test-infra-local:
-	@echo "Pinging control plane..."
-	$(KUBECTL) get nodes
+test-appliance:
+	@echo "${GREEN}Testing appliance services...${RESET}"
+	@echo "Testing appliance 001..."
+	curl -f http://localhost:8001 || echo "Appliance not running. Start with 'make appliances-up'"
 
-test-infra-prod:
-	@echo "Validating Proxmox VMs..."
-	# Assumes SSH access via ansible
-	$(ANSIBLE) -i inventory/proxmox.yml all -m ping
+test-integration:
+	@echo "${GREEN}Running integration tests...${RESET}"
+	@echo "Test 1: Heartbeat from appliance to backend"
+	$(DOCKER) exec aiops-appliance-001 python3 -c "import httpx; print(httpx.post('http://backend-api:8000/api/v1/heartbeat', json={'appliance_id':'test','version':'1.0','uptime':100,'services':{},'metrics':{}}).json())"
+	@echo "Test 2: Config sync"
+	$(DOCKER) exec aiops-appliance-001 python3 -c "import httpx; print(httpx.get('http://backend-api:8000/api/v1/appliance/test/config').json())"
 
-test-services-local:
-	@echo "Testing DNS, Samba, IPA locally..."
-	$(KUBECTL) exec -n ai-ops deploy/dns -- dig +short google.com
-
-test-services-prod:
-	$(ANSIBLE) -i inventory/proxmox.yml dns -m command -a "dig @10.0.1.5 corp.example.com"
-
-test-ai:
-	@echo "${GREEN}Testing AI Ops Agent (NL → Intent)...${RESET}"
-	curl -s -X POST http://localhost:30080/api/v1/intent \
-	  -H "Content-Type: application/json" \
-	  -d '{"nl": "Add DNS A record for test.local to 192.168.1.100"}' | jq
-
-test-ai-prod:
-	@echo "${GREEN}Testing AI agent in prod...${RESET}"
-	curl -sk -X POST https://ai-ops.corp.example.com/api/v1/intent \
-	  -H "Authorization: Bearer $(VAULT_TOKEN)" \
-	  -d '{"nl": "Add DNS A record for prod.local to 10.0.10.100"}'
+# Test LLM integration
+test-llm:
+	@echo "${GREEN}Testing LLM integration...${RESET}"
+	cd $(BACKEND_DIR)/llm && $(PYTHON) client.py
 
 # -----------------------------------------------------------------------------
 # Linting & Validation
 # -----------------------------------------------------------------------------
+
 lint:
-	@echo "${GREEN}Linting Terraform, Ansible, YAML...${RESET}"
-	$(TERRAFORM) fmt -check -recursive
-	ansible-lint services/
-	yamllint .
-	tflint infra/
-	pre-commit run --all-files
+	@echo "${GREEN}Running linters...${RESET}"
+	@echo "Linting Python..."
+	cd $(BACKEND_DIR)/api && ruff check .
+	cd $(APPLIANCE_DIR)/agent && ruff check .
+	@echo "Linting Ansible..."
+	ansible-lint $(BACKEND_DIR)/ansible/
+	@echo "Linting Terraform..."
+	terraform fmt -check -recursive $(INFRA_DIR)/
 
 format:
-	$(TERRAFORM) fmt -recursive
-	black .
-	isort .
+	@echo "${GREEN}Formatting code...${RESET}"
+	black $(BACKEND_DIR)/ $(APPLIANCE_DIR)/
+	isort $(BACKEND_DIR)/ $(APPLIANCE_DIR)/
+	terraform fmt -recursive $(INFRA_DIR)/
 
 validate:
-	$(TERRAFORM) validate
-	ansible-playbook --syntax-check services/dns.yml
-	ansible-playbook --syntax-check services/samba.yml
-	ansible-playbook --syntax-check services/pki.yml
+	@echo "${GREEN}Validating configurations...${RESET}"
+	@echo "Validating Ansible playbooks..."
+	ansible-playbook --syntax-check $(BACKEND_DIR)/ansible/playbooks/*.yml
+	@echo "Validating Terraform..."
+	cd $(INFRA_DIR)/proxmox && terraform validate
+	cd $(INFRA_DIR)/aws && terraform validate
+
+# -----------------------------------------------------------------------------
+# Deployment (Proxmox / AWS)
+# -----------------------------------------------------------------------------
+
+deploy-proxmox:
+	@echo "${GREEN}Deploying to Proxmox (k3s)...${RESET}"
+	cd $(INFRA_DIR)/proxmox && terraform init && terraform apply
+	@echo "${GREEN}Proxmox deployment complete${RESET}"
+
+deploy-aws:
+	@echo "${GREEN}Deploying to AWS (EKS)...${RESET}"
+	cd $(INFRA_DIR)/aws && terraform init && terraform apply
+	@echo "${GREEN}AWS deployment complete${RESET}"
+
+# Run Ansible playbook on appliances
+ansible-run:
+	@echo "Which playbook? (dns, samba, users, mail, pki)"
+	@read -p "Playbook: " playbook; \
+	$(ANSIBLE) -i $(BACKEND_DIR)/ansible/inventory/appliances.yml \
+	  $(BACKEND_DIR)/ansible/playbooks/$$playbook.yml
 
 # -----------------------------------------------------------------------------
 # Security & Compliance
 # -----------------------------------------------------------------------------
+
 sbom:
-	@echo "${GREEN}Generating SBOM (Syft)...${RESET}"
+	@echo "${GREEN}Generating SBOM...${RESET}"
 	$(SYFT) . -o cyclonedx-json > sbom.json
 	$(SYFT) . -o spdx-json > sbom.spdx.json
-
-sign: sbom
-	@echo "${GREEN}Signing SBOM and manifests...${RESET}"
-	$(COSIGN) sign-blob --key cosign.key sbom.json > sbom.json.sig
-	$(COSIGN) sign-blob --key cosign.key cluster/k3s/apps/ai-ops-agent/deployment.yaml > deployment.yaml.sig
 
 # -----------------------------------------------------------------------------
 # Cleanup
 # -----------------------------------------------------------------------------
+
 clean:
-	@echo "${GREEN}Cleaning workspace...${RESET}"
-	rm -rf .terraform* *.tfplan *.tfstate *.tfstate.backup
+	@echo "${YELLOW}Cleaning build artifacts...${RESET}"
+	find . -type f -name "*.pyc" -delete
+	find . -type d -name "__pycache__" -delete
+	find . -type d -name "*.egg-info" -exec rm -rf {} + 2>/dev/null || true
 	rm -f sbom.*
-	find . -name "*.sig" -delete
-	$(MAKE) dev-down
+
+clean-all: clean
+	@echo "${YELLOW}Cleaning everything (including Docker volumes)...${RESET}"
+	$(COMPOSE) down -v --remove-orphans
+	docker system prune -af --volumes
 
 # -----------------------------------------------------------------------------
 # End of Makefile

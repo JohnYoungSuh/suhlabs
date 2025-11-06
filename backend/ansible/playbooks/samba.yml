@@ -1,0 +1,89 @@
+---
+# Samba File Sharing Configuration
+- name: Configure Samba file server on appliance
+  hosts: all
+  become: yes
+
+  vars:
+    samba_shares:
+      - name: family
+        path: /srv/shares/family
+        comment: "Family shared folder"
+        valid_users: "@users"
+        read_only: no
+        browsable: yes
+
+      - name: public
+        path: /srv/shares/public
+        comment: "Public folder"
+        guest_ok: yes
+        read_only: yes
+        browsable: yes
+
+  tasks:
+    - name: Install Samba packages
+      apt:
+        name:
+          - samba
+          - samba-common-bin
+          - cifs-utils
+        state: present
+        update_cache: yes
+
+    - name: Create share directories
+      file:
+        path: "{{ item.path }}"
+        state: directory
+        mode: '0775'
+        owner: root
+        group: users
+      loop: "{{ samba_shares }}"
+
+    - name: Configure Samba global settings
+      ini_file:
+        path: /etc/samba/smb.conf
+        section: global
+        option: "{{ item.option }}"
+        value: "{{ item.value }}"
+      loop:
+        - { option: 'workgroup', value: '{{ samba_workgroup }}' }
+        - { option: 'server string', value: '{{ samba_server_string }}' }
+        - { option: 'security', value: 'user' }
+        - { option: 'map to guest', value: 'bad user' }
+        - { option: 'dns proxy', value: 'no' }
+      notify: restart samba
+
+    - name: Configure Samba shares
+      ini_file:
+        path: /etc/samba/smb.conf
+        section: "{{ item.0.name }}"
+        option: "{{ item.1.option }}"
+        value: "{{ item.1.value }}"
+      loop: "{{ samba_shares | subelements('items', skip_missing=True) }}"
+      vars:
+        items:
+          - { option: 'path', value: '{{ item.0.path }}' }
+          - { option: 'comment', value: '{{ item.0.comment }}' }
+          - { option: 'valid users', value: '{{ item.0.valid_users | default(omit) }}' }
+          - { option: 'guest ok', value: '{{ item.0.guest_ok | default("no") }}' }
+          - { option: 'read only', value: '{{ item.0.read_only | default("no") }}' }
+          - { option: 'browsable', value: '{{ item.0.browsable | default("yes") }}' }
+      notify: restart samba
+
+    - name: Enable and start Samba services
+      systemd:
+        name: "{{ item }}"
+        enabled: yes
+        state: started
+      loop:
+        - smbd
+        - nmbd
+
+  handlers:
+    - name: restart samba
+      systemd:
+        name: "{{ item }}"
+        state: restarted
+      loop:
+        - smbd
+        - nmbd

@@ -1,0 +1,59 @@
+---
+# User Management Playbook
+- name: Manage users on appliance
+  hosts: all
+  become: yes
+
+  vars:
+    # Users to create/manage
+    appliance_users:
+      - username: john
+        comment: "John Doe"
+        groups: [users, samba]
+        samba_password: changeme123
+
+      - username: jane
+        comment: "Jane Doe"
+        groups: [users, samba, sudo]
+        samba_password: changeme456
+
+  tasks:
+    - name: Ensure required groups exist
+      group:
+        name: "{{ item }}"
+        state: present
+      loop:
+        - users
+        - samba
+
+    - name: Create user accounts
+      user:
+        name: "{{ item.username }}"
+        comment: "{{ item.comment }}"
+        groups: "{{ item.groups }}"
+        append: yes
+        shell: /bin/bash
+        create_home: yes
+        state: present
+      loop: "{{ appliance_users }}"
+
+    - name: Set Samba passwords for users
+      shell: |
+        (echo "{{ item.samba_password }}"; echo "{{ item.samba_password }}") | smbpasswd -s -a {{ item.username }}
+      loop: "{{ appliance_users }}"
+      when: item.samba_password is defined
+      no_log: true  # Don't log passwords
+
+    - name: Enable Samba users
+      shell: |
+        smbpasswd -e {{ item.username }}
+      loop: "{{ appliance_users }}"
+      when: item.samba_password is defined
+
+    - name: Create user home directory share permissions
+      file:
+        path: "/home/{{ item.username }}"
+        mode: '0700'
+        owner: "{{ item.username }}"
+        group: "{{ item.username }}"
+      loop: "{{ appliance_users }}"

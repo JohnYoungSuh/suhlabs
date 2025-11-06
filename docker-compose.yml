@@ -1,0 +1,229 @@
+# AIOps Local Development Environment
+# Simulates backend + multiple home appliances
+
+version: '3.8'
+
+services:
+  # ===========================================================================
+  # BACKEND SERVICES
+  # ===========================================================================
+
+  # PostgreSQL Database
+  postgres:
+    image: postgres:16-alpine
+    container_name: aiops-postgres
+    environment:
+      POSTGRES_USER: aiops
+      POSTGRES_PASSWORD: aiops123
+      POSTGRES_DB: aiops
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U aiops"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Redis Cache
+  redis:
+    image: redis:7-alpine
+    container_name: aiops-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+
+  # Ollama LLM Service
+  ollama:
+    image: ollama/ollama:latest
+    container_name: aiops-ollama
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama_data:/root/.ollama
+    environment:
+      - OLLAMA_HOST=0.0.0.0
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:11434/api/tags"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    # Uncomment for GPU support (requires nvidia-docker)
+    # deploy:
+    #   resources:
+    #     reservations:
+    #       devices:
+    #         - driver: nvidia
+    #           count: 1
+    #           capabilities: [gpu]
+
+  # Backend API
+  backend-api:
+    build:
+      context: ./backend/api
+      dockerfile: Dockerfile
+    container_name: aiops-backend-api
+    ports:
+      - "8000:8000"
+    environment:
+      - DATABASE_URL=postgresql://aiops:aiops123@postgres:5432/aiops
+      - REDIS_URL=redis://redis:6379/0
+      - OLLAMA_API_URL=http://ollama:11434
+      - OLLAMA_MODEL=llama3.2:3b
+      - SECRET_KEY=dev-secret-key-change-in-production
+    volumes:
+      - ./backend/api:/app
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      ollama:
+        condition: service_healthy
+    command: uvicorn main:app --host 0.0.0.0 --port 8000 --reload
+
+  # ===========================================================================
+  # SIMULATED APPLIANCES
+  # ===========================================================================
+
+  # Appliance 1 (Customer 1)
+  appliance-001:
+    build:
+      context: ./appliance
+      dockerfile: Dockerfile
+    container_name: aiops-appliance-001
+    hostname: appliance-001
+    environment:
+      - APPLIANCE_ID=sim-appliance-001
+      - BACKEND_URL=http://backend-api:8000
+      - API_KEY=dev-key-123
+      - SERVICES=dns,samba,mail
+    volumes:
+      - appliance_001_data:/srv
+      - ./appliance/agent:/opt/aiops/agent
+    ports:
+      - "8001:80"      # Web UI
+      - "5301:53/udp"  # DNS
+      - "4451:445"     # Samba
+    depends_on:
+      - backend-api
+    networks:
+      aiops_network:
+        ipv4_address: 172.20.0.101
+
+  # Appliance 2 (Customer 2)
+  appliance-002:
+    build:
+      context: ./appliance
+      dockerfile: Dockerfile
+    container_name: aiops-appliance-002
+    hostname: appliance-002
+    environment:
+      - APPLIANCE_ID=sim-appliance-002
+      - BACKEND_URL=http://backend-api:8000
+      - API_KEY=dev-key-123
+      - SERVICES=dns,samba
+    volumes:
+      - appliance_002_data:/srv
+      - ./appliance/agent:/opt/aiops/agent
+    ports:
+      - "8002:80"
+      - "5302:53/udp"
+      - "4452:445"
+    depends_on:
+      - backend-api
+    networks:
+      aiops_network:
+        ipv4_address: 172.20.0.102
+
+  # Appliance 3 (Customer 3)
+  appliance-003:
+    build:
+      context: ./appliance
+      dockerfile: Dockerfile
+    container_name: aiops-appliance-003
+    hostname: appliance-003
+    environment:
+      - APPLIANCE_ID=sim-appliance-003
+      - BACKEND_URL=http://backend-api:8000
+      - API_KEY=dev-key-123
+      - SERVICES=dns,samba,mail,pki
+    volumes:
+      - appliance_003_data:/srv
+      - ./appliance/agent:/opt/aiops/agent
+    ports:
+      - "8003:80"
+      - "5303:53/udp"
+      - "4453:445"
+    depends_on:
+      - backend-api
+    networks:
+      aiops_network:
+        ipv4_address: 172.20.0.103
+
+  # ===========================================================================
+  # MONITORING (Optional)
+  # ===========================================================================
+
+  # Prometheus
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: aiops-prometheus
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml
+      - prometheus_data:/prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+    profiles:
+      - monitoring
+
+  # Grafana
+  grafana:
+    image: grafana/grafana:latest
+    container_name: aiops-grafana
+    ports:
+      - "3000:3000"
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+    volumes:
+      - grafana_data:/var/lib/grafana
+    depends_on:
+      - prometheus
+    profiles:
+      - monitoring
+
+# =============================================================================
+# NETWORKS
+# =============================================================================
+
+networks:
+  aiops_network:
+    driver: bridge
+    ipam:
+      driver: default
+      config:
+        - subnet: 172.20.0.0/16
+
+# =============================================================================
+# VOLUMES
+# =============================================================================
+
+volumes:
+  postgres_data:
+  redis_data:
+  ollama_data:
+  appliance_001_data:
+  appliance_002_data:
+  appliance_003_data:
+  prometheus_data:
+  grafana_data:

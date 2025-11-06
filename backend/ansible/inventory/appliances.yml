@@ -1,0 +1,39 @@
+# Ansible Inventory for Home Appliances
+# This file is dynamically generated from the backend database
+# but can also be manually edited for testing
+
+all:
+  children:
+    appliances:
+      hosts:
+        # Example appliances (replace with real IPs/hostnames)
+        appliance-001:
+          ansible_host: 192.168.1.100
+          appliance_id: uuid-1234-5678
+          customer_id: cust-001
+          services:
+            - dns
+            - samba
+            - mail
+            - pki
+
+        appliance-002:
+          ansible_host: 192.168.1.101
+          appliance_id: uuid-2345-6789
+          customer_id: cust-002
+          services:
+            - dns
+            - samba
+
+      vars:
+        ansible_user: aiops
+        ansible_ssh_private_key_file: ~/.ssh/aiops_ed25519
+        ansible_python_interpreter: /usr/bin/python3
+
+        # Common configuration
+        dns_forwarders:
+          - 1.1.1.1
+          - 8.8.8.8
+
+        samba_workgroup: WORKGROUP
+        samba_server_string: "Home Appliance File Server"

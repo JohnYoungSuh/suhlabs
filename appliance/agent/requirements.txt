@@ -1,0 +1,6 @@
+# AIOps Appliance Agent - Python Dependencies
+
+httpx==0.26.0
+psutil==5.9.8
+pyyaml==6.0.1
+python-daemon==3.0.1

@@ -1,0 +1,40 @@
+---
+# Install k3s Agent (Worker Node)
+
+- name: Download k3s installation script
+  get_url:
+    url: https://get.k3s.io
+    dest: /tmp/k3s-install.sh
+    mode: '0755'
+  when: k3s_needs_install
+
+- name: Install k3s agent
+  shell: |
+    INSTALL_K3S_VERSION="{{ k3s_version }}" \
+    K3S_TOKEN="{{ k3s_token }}" \
+    K3S_URL="https://{{ lb_vip }}:6443" \
+    INSTALL_K3S_EXEC="agent \
+      --node-ip={{ node_ip }} \
+      --node-name={{ node_name }} \
+      {{ k3s_agent_args | join(' ') }}" \
+    /tmp/k3s-install.sh
+  when: k3s_needs_install
+  register: k3s_agent_install
+  retries: 5
+  delay: 15
+
+- name: Enable and start k3s-agent service
+  systemd:
+    name: k3s-agent
+    enabled: yes
+    state: started
+
+- name: Label worker node
+  command: >
+    kubectl label node {{ node_name }}
+    node-role.kubernetes.io/worker=true
+    asg-group={{ asg_group }}
+    --overwrite
+  delegate_to: k3s-cp-01
+  run_once: true
+  when: asg_group is defined

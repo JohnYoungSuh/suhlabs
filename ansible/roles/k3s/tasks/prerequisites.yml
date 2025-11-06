@@ -1,0 +1,36 @@
+---
+# k3s Prerequisites
+
+- name: Update package cache
+  package:
+    update_cache: yes
+  when: ansible_os_family in ['Debian', 'RedHat']
+
+- name: Install required packages
+  package:
+    name:
+      - curl
+      - wget
+      - tar
+      - iptables
+      - policycoreutils-python-utils  # For SELinux
+      - container-selinux
+    state: present
+
+- name: Check if k3s binary exists
+  stat:
+    path: /usr/local/bin/k3s
+  register: k3s_binary
+
+- name: Get installed k3s version
+  command: /usr/local/bin/k3s --version
+  register: k3s_installed_version
+  changed_when: false
+  failed_when: false
+  when: k3s_binary.stat.exists
+
+- name: Set k3s installation flag
+  set_fact:
+    k3s_needs_install: >-
+      {{ not k3s_binary.stat.exists or
+         k3s_version not in k3s_installed_version.stdout | default('') }}

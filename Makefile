@@ -18,6 +18,7 @@
         ollama-pull \
         migrate-state \
         packer-build packer-validate \
+        ansible-ping ansible-deploy-k3s ansible-deploy-apps ansible-kubeconfig \
         autoscaler-build autoscaler-deploy autoscaler-status \
         template-clone vm-create vm-list \
         clean
@@ -80,6 +81,12 @@ help:
 	@echo "  packer-validate  Validate Packer template"
 	@echo "  packer-build     Build CentOS 9 cloud-init template"
 	@echo "  autoscaler-build Build and push autoscaler container"
+	@echo ""
+	@echo "${GREEN}Ansible Deployment:${RESET}"
+	@echo "  ansible-ping         Test connectivity to all hosts"
+	@echo "  ansible-deploy-k3s   Deploy k3s cluster (HA control plane + workers)"
+	@echo "  ansible-deploy-apps  Deploy applications to k3s"
+	@echo "  ansible-kubeconfig   Fetch kubeconfig from cluster"
 	@echo ""
 	@echo "${GREEN}Autoscaling:${RESET}"
 	@echo "  autoscaler-deploy Deploy autoscaler to k3s"
@@ -280,6 +287,86 @@ packer-build: packer-validate
 packer-debug:
 	@echo "${GREEN}Building with debug output...${RESET}"
 	cd packer && PACKER_LOG=1 $(PACKER) build -debug centos9-cloudinit.pkr.hcl
+
+# -----------------------------------------------------------------------------
+# Ansible: Cluster & Application Deployment
+# -----------------------------------------------------------------------------
+ANSIBLE_INVENTORY := inventory/proxmox.yml
+ANSIBLE_PLAYBOOK_DIR := ansible
+
+ansible-ping:
+	@echo "${GREEN}Testing connectivity to all hosts...${RESET}"
+	$(ANSIBLE) all -i $(ANSIBLE_INVENTORY) -m ping
+
+ansible-preflight:
+	@echo "${GREEN}Running pre-flight checks...${RESET}"
+	$(ANSIBLE) -i $(ANSIBLE_INVENTORY) $(ANSIBLE_PLAYBOOK_DIR)/deploy-k3s.yml --tags preflight
+
+ansible-deploy-lb:
+	@echo "${GREEN}Deploying HAProxy load balancers...${RESET}"
+	$(ANSIBLE) -i $(ANSIBLE_INVENTORY) $(ANSIBLE_PLAYBOOK_DIR)/deploy-k3s.yml --tags loadbalancer
+
+ansible-deploy-k3s: ansible-preflight ansible-deploy-lb
+	@echo "${GREEN}Deploying k3s cluster...${RESET}"
+	@echo "This will:"
+	@echo "  1. Deploy HAProxy load balancers with Keepalived"
+	@echo "  2. Initialize first control plane node"
+	@echo "  3. Join additional control plane nodes"
+	@echo "  4. Join worker nodes"
+	@echo ""
+	$(ANSIBLE) -i $(ANSIBLE_INVENTORY) $(ANSIBLE_PLAYBOOK_DIR)/deploy-k3s.yml
+	@echo ""
+	@echo "${GREEN}k3s cluster deployed successfully!${RESET}"
+	@echo "Run 'make ansible-kubeconfig' to fetch the kubeconfig"
+
+ansible-deploy-apps:
+	@echo "${GREEN}Deploying applications to k3s...${RESET}"
+	@echo "This will deploy:"
+	@echo "  - Storage provisioner (local-path)"
+	@echo "  - Vault (secrets management)"
+	@echo "  - Ollama (LLM runtime)"
+	@echo "  - MinIO (S3 storage)"
+	@echo "  - AI Ops Agent (FastAPI service)"
+	@echo "  - Autoscaler (CronJob)"
+	@echo ""
+	$(ANSIBLE) -i $(ANSIBLE_INVENTORY) $(ANSIBLE_PLAYBOOK_DIR)/deploy-apps.yml
+	@echo ""
+	@echo "${GREEN}Applications deployed successfully!${RESET}"
+
+ansible-kubeconfig:
+	@echo "${GREEN}Fetching kubeconfig from cluster...${RESET}"
+	@mkdir -p ~/.kube
+	scp -o StrictHostKeyChecking=no cloud-user@10.100.0.10:~/.kube/config ~/.kube/config-aiops-prod
+	@echo "Kubeconfig saved to: ~/.kube/config-aiops-prod"
+	@echo ""
+	@echo "To use this kubeconfig:"
+	@echo "  export KUBECONFIG=~/.kube/config-aiops-prod"
+	@echo "  kubectl get nodes"
+
+ansible-verify:
+	@echo "${GREEN}Verifying cluster deployment...${RESET}"
+	$(ANSIBLE) -i $(ANSIBLE_INVENTORY) $(ANSIBLE_PLAYBOOK_DIR)/deploy-k3s.yml --tags verify
+	$(ANSIBLE) -i $(ANSIBLE_INVENTORY) $(ANSIBLE_PLAYBOOK_DIR)/deploy-apps.yml --tags verify
+
+ansible-upgrade-k3s:
+	@echo "${GREEN}Upgrading k3s cluster...${RESET}"
+	@echo "WARNING: This will upgrade k3s on all nodes"
+	@read -p "Continue? (y/N) " confirm && [ "$$confirm" = "y" ] || exit 1
+	K3S_VERSION=$(K3S_VERSION) $(ANSIBLE) -i $(ANSIBLE_INVENTORY) $(ANSIBLE_PLAYBOOK_DIR)/upgrade-k3s.yml
+
+ansible-drain-node:
+	@echo "${GREEN}Draining node for maintenance...${RESET}"
+	@read -p "Enter node name: " node && \
+	$(ANSIBLE) -i $(ANSIBLE_INVENTORY) k3s-cp-01 -m shell -a "kubectl drain $$node --ignore-daemonsets --delete-emptydir-data"
+
+ansible-uncordon-node:
+	@echo "${GREEN}Uncordoning node...${RESET}"
+	@read -p "Enter node name: " node && \
+	$(ANSIBLE) -i $(ANSIBLE_INVENTORY) k3s-cp-01 -m shell -a "kubectl uncordon $$node"
+
+ansible-logs:
+	@echo "${GREEN}Fetching k3s logs from control plane...${RESET}"
+	$(ANSIBLE) -i $(ANSIBLE_INVENTORY) control_plane -m shell -a "journalctl -u k3s -n 100"
 
 # -----------------------------------------------------------------------------
 # Autoscaler: Build & Deploy

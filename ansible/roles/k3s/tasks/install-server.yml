@@ -1,0 +1,69 @@
+---
+# Install k3s Server (Control Plane)
+
+- name: Download k3s installation script
+  get_url:
+    url: https://get.k3s.io
+    dest: /tmp/k3s-install.sh
+    mode: '0755'
+  when: k3s_needs_install
+
+- name: Install k3s server (first control plane node)
+  shell: |
+    INSTALL_K3S_VERSION="{{ k3s_version }}" \
+    K3S_TOKEN="{{ k3s_token }}" \
+    K3S_KUBECONFIG_MODE="644" \
+    INSTALL_K3S_EXEC="server --cluster-init \
+      --node-ip={{ node_ip }} \
+      --node-name={{ node_name }} \
+      --disable={{ k3s_disable | join(',') }} \
+      {{ k3s_server_args | join(' ') }}" \
+    /tmp/k3s-install.sh
+  when:
+    - k3s_needs_install
+    - k3s_server_init | default(false)
+  register: k3s_server_install
+  retries: 3
+  delay: 10
+
+- name: Wait for first control plane node to be ready
+  wait_for:
+    host: "{{ node_ip }}"
+    port: 6443
+    delay: 10
+    timeout: 300
+  when:
+    - k3s_server_init | default(false)
+    - k3s_server_install.changed
+
+- name: Install k3s server (additional control plane nodes)
+  shell: |
+    INSTALL_K3S_VERSION="{{ k3s_version }}" \
+    K3S_TOKEN="{{ k3s_token }}" \
+    K3S_URL="https://{{ hostvars['k3s-cp-01']['node_ip'] }}:6443" \
+    K3S_KUBECONFIG_MODE="644" \
+    INSTALL_K3S_EXEC="server \
+      --node-ip={{ node_ip }} \
+      --node-name={{ node_name }} \
+      --disable={{ k3s_disable | join(',') }} \
+      {{ k3s_server_args | join(' ') }}" \
+    /tmp/k3s-install.sh
+  when:
+    - k3s_needs_install
+    - not (k3s_server_init | default(false))
+  register: k3s_server_join
+  retries: 3
+  delay: 10
+
+- name: Enable and start k3s service
+  systemd:
+    name: k3s
+    enabled: yes
+    state: started
+
+- name: Wait for k3s API to be ready
+  wait_for:
+    host: "{{ node_ip }}"
+    port: 6443
+    delay: 5
+    timeout: 180

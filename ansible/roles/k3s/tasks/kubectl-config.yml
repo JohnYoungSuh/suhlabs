@@ -1,0 +1,28 @@
+---
+# Configure kubectl
+
+- name: Create .kube directory
+  file:
+    path: "{{ ansible_env.HOME }}/.kube"
+    state: directory
+    mode: '0755'
+
+- name: Copy kubeconfig
+  copy:
+    src: /etc/rancher/k3s/k3s.yaml
+    dest: "{{ ansible_env.HOME }}/.kube/config"
+    remote_src: yes
+    mode: '0600'
+
+- name: Update kubeconfig server address
+  replace:
+    path: "{{ ansible_env.HOME }}/.kube/config"
+    regexp: 'https://127.0.0.1:6443'
+    replace: "https://{{ lb_vip }}:6443"
+
+- name: Fetch kubeconfig to local machine
+  fetch:
+    src: "{{ ansible_env.HOME }}/.kube/config"
+    dest: "{{ playbook_dir }}/../kubeconfig-{{ cluster_name | default('k3s') }}.yaml"
+    flat: yes
+  run_once: true

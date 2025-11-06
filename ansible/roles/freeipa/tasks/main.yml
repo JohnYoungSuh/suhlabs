@@ -1,0 +1,187 @@
+---
+# FreeIPA Role - Complete Identity Management Solution
+# Includes: LDAP, Kerberos, DNS, CA/PKI
+
+- name: Set hostname to FQDN
+  hostname:
+    name: "{{ freeipa_hostname }}.{{ freeipa_domain }}"
+
+- name: Update /etc/hosts
+  lineinfile:
+    path: /etc/hosts
+    line: "{{ ansible_host }} {{ freeipa_hostname }}.{{ freeipa_domain }} {{ freeipa_hostname }}"
+    state: present
+
+- name: Install FreeIPA server packages
+  package:
+    name:
+      - ipa-server
+      - ipa-server-dns
+      - ipa-server-trust-ad  # For Active Directory trusts
+      - python3-ipalib
+      - python3-ipaclient
+    state: present
+
+- name: Check if FreeIPA is already installed
+  stat:
+    path: /etc/ipa/default.conf
+  register: ipa_installed
+
+- name: Generate random passwords if not provided
+  set_fact:
+    freeipa_admin_password: "{{ lookup('password', '/dev/null length=32 chars=ascii_letters,digits') }}"
+    freeipa_ds_password: "{{ lookup('password', '/dev/null length=32 chars=ascii_letters,digits') }}"
+  when:
+    - not ipa_installed.stat.exists
+    - freeipa_admin_password is not defined or freeipa_ds_password is not defined
+
+- name: Display generated passwords (save these!)
+  debug:
+    msg:
+      - "FreeIPA Admin Password: {{ freeipa_admin_password }}"
+      - "Directory Manager Password: {{ freeipa_ds_password }}"
+  when: not ipa_installed.stat.exists
+
+- name: Install FreeIPA server
+  command: >
+    ipa-server-install
+    --realm={{ freeipa_realm }}
+    --domain={{ freeipa_domain }}
+    --ds-password={{ freeipa_ds_password }}
+    --admin-password={{ freeipa_admin_password }}
+    --hostname={{ freeipa_hostname }}.{{ freeipa_domain }}
+    --ip-address={{ ansible_host }}
+    {% if freeipa_setup_dns %}--setup-dns{% endif %}
+    {% if freeipa_forwarders %}--forwarder={{ freeipa_forwarders[0] }}{% endif %}
+    {% if freeipa_forwarders | length > 1 %}--forwarder={{ freeipa_forwarders[1] }}{% endif %}
+    --no-ntp
+    --mkhomedir
+    --unattended
+  when: not ipa_installed.stat.exists
+  register: ipa_install
+  async: 3600
+  poll: 10
+
+- name: Display FreeIPA installation result
+  debug:
+    var: ipa_install.stdout_lines
+  when: ipa_install.changed
+
+- name: Get Kerberos ticket for admin
+  command: echo {{ freeipa_admin_password }} | kinit admin
+  no_log: true
+  changed_when: false
+
+- name: Configure FreeIPA DNS forward zone (if separate from IPA DNS)
+  command: >
+    ipa dnszone-add {{ freeipa_additional_zones[0] }}
+    --name-server={{ freeipa_hostname }}.{{ freeipa_domain }}.
+    --admin-email=admin@{{ freeipa_domain }}
+  when:
+    - freeipa_setup_dns
+    - freeipa_additional_zones is defined
+  failed_when: false  # May already exist
+  changed_when: false
+
+- name: Add DNS records for infrastructure
+  command: >
+    ipa dnsrecord-add {{ freeipa_domain }} {{ item.name }}
+    --{{ item.type | lower }}-rec={{ item.value }}
+  loop: "{{ freeipa_dns_records }}"
+  when: freeipa_setup_dns
+  failed_when: false  # May already exist
+  changed_when: false
+
+- name: Create user groups
+  command: ipa group-add {{ item.name }} --desc="{{ item.description }}"
+  loop: "{{ freeipa_groups }}"
+  failed_when: false
+  changed_when: false
+
+- name: Create service users
+  command: >
+    ipa user-add {{ item.username }}
+    --first={{ item.first }}
+    --last={{ item.last }}
+    --email={{ item.email }}
+    --password
+  loop: "{{ freeipa_users }}"
+  failed_when: false
+  changed_when: false
+
+- name: Add users to groups
+  command: ipa group-add-member {{ item.group }} --users={{ item.username }}
+  loop: "{{ freeipa_user_groups }}"
+  failed_when: false
+  changed_when: false
+
+- name: Create service principals for k3s
+  command: >
+    ipa service-add HTTP/{{ item }}@{{ freeipa_realm }}
+  loop:
+    - "k3s-api.{{ freeipa_domain }}"
+    - "vault.{{ freeipa_domain }}"
+    - "aiops.{{ freeipa_domain }}"
+  failed_when: false
+  changed_when: false
+
+- name: Get CA certificate
+  fetch:
+    src: /etc/ipa/ca.crt
+    dest: "{{ playbook_dir }}/../certs/ipa-ca.crt"
+    flat: yes
+
+- name: Configure firewall for FreeIPA
+  firewalld:
+    service: "{{ item }}"
+    permanent: yes
+    state: enabled
+    immediate: yes
+  loop:
+    - http
+    - https
+    - ldap
+    - ldaps
+    - kerberos
+    - kpasswd
+    - dns
+  when: ansible_facts.services['firewalld.service'] is defined
+
+- name: Enable and start IPA services
+  systemd:
+    name: ipa
+    enabled: yes
+    state: started
+
+- name: Verify FreeIPA status
+  command: ipactl status
+  register: ipa_status
+  changed_when: false
+
+- name: Display IPA status
+  debug:
+    var: ipa_status.stdout_lines
+
+- name: Display FreeIPA access information
+  debug:
+    msg: |
+      ============================================
+      FreeIPA Installation Complete!
+      ============================================
+      
+      Web UI: https://{{ freeipa_hostname }}.{{ freeipa_domain }}
+      Username: admin
+      Password: {{ freeipa_admin_password }}
+      
+      Realm: {{ freeipa_realm }}
+      Domain: {{ freeipa_domain }}
+      
+      CA Certificate: {{ playbook_dir }}/../certs/ipa-ca.crt
+      
+      To obtain a Kerberos ticket:
+      kinit admin
+      
+      To manage FreeIPA:
+      ipa user-find
+      ipa host-find
+      ipa service-find

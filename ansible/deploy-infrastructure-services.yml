@@ -1,0 +1,112 @@
+---
+# Deploy Infrastructure Services (DNS, PKI, Directory Services)
+
+- name: Pre-flight checks for infrastructure services
+  hosts: all
+  gather_facts: yes
+  tasks:
+    - name: Check connectivity
+      ping:
+    
+    - name: Verify sufficient resources for FreeIPA
+      assert:
+        that:
+          - ansible_memtotal_mb >= 4096
+        fail_msg: "FreeIPA requires at least 4GB RAM"
+      when: "'freeipa' in group_names"
+
+- name: Deploy DNS Server (BIND)
+  hosts: dns_servers
+  become: yes
+  roles:
+    - bind-dns
+  tags: [dns]
+
+- name: Deploy FreeIPA (Directory Services + PKI + Kerberos)
+  hosts: freeipa_servers
+  become: yes
+  roles:
+    - freeipa
+  tags: [freeipa, pki, ldap]
+
+- name: Configure k3s nodes as FreeIPA clients
+  hosts: k3s_cluster
+  become: yes
+  tasks:
+    - name: Install IPA client packages
+      package:
+        name:
+          - ipa-client
+          - python3-ipaclient
+        state: present
+    
+    - name: Check if already enrolled
+      stat:
+        path: /etc/ipa/default.conf
+      register: ipa_client_enrolled
+    
+    - name: Enroll as FreeIPA client
+      command: >
+        ipa-client-install
+        --domain={{ freeipa_domain }}
+        --realm={{ freeipa_realm }}
+        --server={{ freeipa_hostname }}.{{ freeipa_domain }}
+        --principal=admin
+        --password={{ freeipa_admin_password }}
+        --mkhomedir
+        --unattended
+      when: not ipa_client_enrolled.stat.exists
+      no_log: true
+  tags: [ipa-client]
+
+- name: Post-deployment verification
+  hosts: dns_servers,freeipa_servers
+  become: yes
+  tasks:
+    - name: Verify DNS resolution
+      command: dig @localhost {{ freeipa_domain }} SOA +short
+      register: dns_verify
+      changed_when: false
+      when: "'dns_servers' in group_names"
+    
+    - name: Verify FreeIPA services
+      command: ipactl status
+      register: ipa_verify
+      changed_when: false
+      when: "'freeipa_servers' in group_names"
+    
+    - name: Display verification results
+      debug:
+        msg: |
+          DNS Status: {{ dns_verify.stdout_lines | default('N/A') }}
+          IPA Status: {{ ipa_verify.stdout_lines | default('N/A') }}
+  tags: [verify]
+
+- name: Display access information
+  hosts: localhost
+  gather_facts: no
+  tasks:
+    - name: Show infrastructure services information
+      debug:
+        msg: |
+          ============================================
+          Infrastructure Services Deployed
+          ============================================
+          
+          DNS Server:
+            - Primary: {{ hostvars[groups['dns_servers'][0]]['ansible_host'] }}
+            - Domain: {{ freeipa_domain }}
+            - Test: dig @{{ hostvars[groups['dns_servers'][0]]['ansible_host'] }} {{ freeipa_domain }}
+          
+          FreeIPA Server:
+            - URL: https://{{ hostvars[groups['freeipa_servers'][0]]['freeipa_hostname'] }}.{{ freeipa_domain }}
+            - Admin: admin / {{ freeipa_admin_password }}
+            - Realm: {{ freeipa_realm }}
+            - CA Cert: certs/ipa-ca.crt
+          
+          Next Steps:
+            1. Access FreeIPA Web UI
+            2. Create additional users/groups
+            3. Configure OIDC for Kubernetes
+            4. Deploy cert-manager with FreeIPA CA
+  tags: [info]

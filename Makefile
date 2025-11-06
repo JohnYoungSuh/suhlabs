@@ -19,6 +19,8 @@
         migrate-state \
         packer-build packer-validate \
         ansible-ping ansible-deploy-k3s ansible-deploy-apps ansible-kubeconfig \
+        ansible-deploy-infra ansible-deploy-dns ansible-deploy-freeipa \
+        ansible-validate validate-all \
         autoscaler-build autoscaler-deploy autoscaler-status \
         template-clone vm-create vm-list \
         clean
@@ -83,10 +85,17 @@ help:
 	@echo "  autoscaler-build Build and push autoscaler container"
 	@echo ""
 	@echo "${GREEN}Ansible Deployment:${RESET}"
-	@echo "  ansible-ping         Test connectivity to all hosts"
-	@echo "  ansible-deploy-k3s   Deploy k3s cluster (HA control plane + workers)"
-	@echo "  ansible-deploy-apps  Deploy applications to k3s"
-	@echo "  ansible-kubeconfig   Fetch kubeconfig from cluster"
+	@echo "  ansible-ping             Test connectivity to all hosts"
+	@echo "  ansible-deploy-k3s       Deploy k3s cluster (HA control plane + workers)"
+	@echo "  ansible-deploy-apps      Deploy applications to k3s"
+	@echo "  ansible-deploy-infra     Deploy infrastructure services (DNS + FreeIPA)"
+	@echo "  ansible-deploy-dns       Deploy only DNS server (BIND)"
+	@echo "  ansible-deploy-freeipa   Deploy only FreeIPA (LDAP + Kerberos + CA)"
+	@echo "  ansible-kubeconfig       Fetch kubeconfig from cluster"
+	@echo "  ansible-validate         Validate complete deployment"
+	@echo ""
+	@echo "${GREEN}Validation:${RESET}"
+	@echo "  validate-all         Run comprehensive validation (Packer + Terraform + Ansible + K8s)"
 	@echo ""
 	@echo "${GREEN}Autoscaling:${RESET}"
 	@echo "  autoscaler-deploy Deploy autoscaler to k3s"
@@ -367,6 +376,54 @@ ansible-uncordon-node:
 ansible-logs:
 	@echo "${GREEN}Fetching k3s logs from control plane...${RESET}"
 	$(ANSIBLE) -i $(ANSIBLE_INVENTORY) control_plane -m shell -a "journalctl -u k3s -n 100"
+
+ansible-deploy-infra:
+	@echo "${GREEN}Deploying infrastructure services (DNS + FreeIPA + PKI)...${RESET}"
+	@echo "This will deploy:"
+	@echo "  - DNS Server (BIND) with forward/reverse zones"
+	@echo "  - FreeIPA (LDAP + Kerberos + CA + DNS integration)"
+	@echo "  - Service principals for k3s"
+	@echo ""
+	$(ANSIBLE) -i $(ANSIBLE_INVENTORY) $(ANSIBLE_PLAYBOOK_DIR)/deploy-infrastructure-services.yml
+	@echo ""
+	@echo "${GREEN}Infrastructure services deployed successfully!${RESET}"
+
+ansible-deploy-dns:
+	@echo "${GREEN}Deploying DNS server (BIND)...${RESET}"
+	$(ANSIBLE) -i $(ANSIBLE_INVENTORY) $(ANSIBLE_PLAYBOOK_DIR)/deploy-infrastructure-services.yml --tags dns
+
+ansible-deploy-freeipa:
+	@echo "${GREEN}Deploying FreeIPA...${RESET}"
+	@echo "WARNING: This requires at least 4GB RAM on the target host"
+	@read -p "Continue? (y/N) " confirm && [ "$$confirm" = "y" ] || exit 1
+	$(ANSIBLE) -i $(ANSIBLE_INVENTORY) $(ANSIBLE_PLAYBOOK_DIR)/deploy-infrastructure-services.yml --tags freeipa
+
+ansible-validate:
+	@echo "${GREEN}Running comprehensive deployment validation...${RESET}"
+	$(ANSIBLE) -i $(ANSIBLE_INVENTORY) $(ANSIBLE_PLAYBOOK_DIR)/validate-deployment.yml
+
+# -----------------------------------------------------------------------------
+# Comprehensive Validation
+# -----------------------------------------------------------------------------
+validate-all:
+	@echo "${GREEN}Running comprehensive validation across all layers...${RESET}"
+	@echo ""
+	@echo "==> Validating Packer Templates"
+	make packer-validate || echo "WARNING: Packer validation failed"
+	@echo ""
+	@echo "==> Validating Terraform Configuration"
+	cd infra/proxmox && terraform validate || echo "WARNING: Terraform validation failed"
+	@echo ""
+	@echo "==> Validating Ansible Playbooks"
+	ansible-playbook --syntax-check ansible/*.yml || echo "WARNING: Ansible syntax check failed"
+	@echo ""
+	@echo "==> Validating Kubernetes Manifests"
+	kubectl apply --dry-run=client -f cluster/ 2>/dev/null || echo "WARNING: K8s validation failed (cluster may not be running)"
+	@echo ""
+	@echo "==> Running Deployment Validation"
+	make ansible-validate || echo "WARNING: Deployment validation failed"
+	@echo ""
+	@echo "${GREEN}Validation complete! Check output above for any issues.${RESET}"
 
 # -----------------------------------------------------------------------------
 # Autoscaler: Build & Deploy

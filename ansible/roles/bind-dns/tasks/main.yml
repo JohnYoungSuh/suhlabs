@@ -1,0 +1,110 @@
+---
+# BIND DNS Server Role
+
+- name: Install BIND packages
+  package:
+    name:
+      - bind
+      - bind-utils
+      - python3-dns  # For DNS verification
+    state: present
+
+- name: Create BIND directories
+  file:
+    path: "{{ item }}"
+    state: directory
+    owner: named
+    group: named
+    mode: '0755'
+  loop:
+    - /var/named/zones
+    - /var/named/zones/master
+    - /var/named/zones/slave
+    - /var/named/dynamic
+
+- name: Configure BIND main config
+  template:
+    src: named.conf.j2
+    dest: /etc/named.conf
+    owner: root
+    group: named
+    mode: '0640'
+    validate: 'named-checkconf %s'
+  notify: restart named
+
+- name: Configure forward zone
+  template:
+    src: zone-forward.j2
+    dest: "/var/named/zones/master/db.{{ dns_domain }}"
+    owner: named
+    group: named
+    mode: '0644'
+  notify: reload named
+  when: dns_server_type == 'master'
+
+- name: Configure reverse zone
+  template:
+    src: zone-reverse.j2
+    dest: "/var/named/zones/master/db.{{ dns_reverse_zone }}"
+    owner: named
+    group: named
+    mode: '0644'
+  notify: reload named
+  when: dns_server_type == 'master'
+
+- name: Configure zone for dynamic updates (k3s)
+  template:
+    src: zone-dynamic.j2
+    dest: "/var/named/dynamic/db.{{ dns_dynamic_zone }}"
+    owner: named
+    group: named
+    mode: '0644'
+  notify: reload named
+  when: dns_enable_dynamic_updates | default(false)
+
+- name: Generate DNSSEC keys
+  command: >
+    dnssec-keygen -a RSASHA256 -b 2048 -n ZONE {{ dns_domain }}
+  args:
+    chdir: /var/named/zones/master
+    creates: "/var/named/zones/master/K{{ dns_domain }}.*.key"
+  when: dns_enable_dnssec | default(false)
+  notify: reload named
+
+- name: Configure firewall for DNS
+  firewalld:
+    service: dns
+    permanent: yes
+    state: enabled
+    immediate: yes
+  when: ansible_facts.services['firewalld.service'] is defined
+
+- name: Enable and start BIND
+  systemd:
+    name: named
+    enabled: yes
+    state: started
+
+- name: Wait for DNS to be ready
+  wait_for:
+    host: "{{ ansible_host }}"
+    port: 53
+    proto: tcp
+    delay: 5
+    timeout: 30
+
+- name: Verify DNS resolution
+  command: dig @localhost {{ dns_domain }} SOA +short
+  register: dns_check
+  changed_when: false
+  failed_when: dns_check.rc != 0
+
+- name: Display DNS server info
+  debug:
+    msg: |
+      DNS Server configured:
+      - Domain: {{ dns_domain }}
+      - Server IP: {{ ansible_host }}
+      - Type: {{ dns_server_type }}
+      - DNSSEC: {{ dns_enable_dnssec | default(false) }}
+      - Dynamic Updates: {{ dns_enable_dynamic_updates | default(false) }}

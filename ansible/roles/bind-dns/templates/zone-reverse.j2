@@ -1,0 +1,16 @@
+$TTL 86400
+@   IN  SOA ns1.{{ dns_domain }}. admin.{{ dns_domain }}. (
+            {{ ansible_date_time.epoch }}  ; Serial
+            3600                            ; Refresh
+            1800                            ; Retry
+            604800                          ; Expire
+            86400 )                         ; Minimum TTL
+
+    IN  NS  ns1.{{ dns_domain }}.
+
+; PTR Records
+{% for record in dns_records %}
+{% if record.type == 'A' %}
+{{ record.value.split('.')[-1] }}   IN  PTR {{ record.name }}.{{ dns_domain }}.
+{% endif %}
+{% endfor %}

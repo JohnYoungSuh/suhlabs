@@ -1,0 +1,51 @@
+---
+# BIND DNS Role Defaults
+
+dns_domain: corp.example.com
+dns_server_type: master  # master or slave
+dns_forwarders:
+  - 8.8.8.8
+  - 1.1.1.1
+
+dns_reverse_zone: "100.10.in-addr.arpa"
+dns_network: "10.100.0.0/24"
+
+dns_enable_dnssec: false
+dns_enable_dynamic_updates: true
+dns_dynamic_zone: "k3s.{{ dns_domain }}"
+
+dns_allow_query:
+  - localnets
+  - localhost
+
+dns_allow_transfer:
+  - localhost
+
+dns_records:
+  # Infrastructure
+  - { name: "proxmox-01", type: "A", value: "10.100.0.1" }
+  - { name: "proxmox-02", type: "A", value: "10.100.0.2" }
+  - { name: "proxmox-03", type: "A", value: "10.100.0.3" }
+  
+  # Load Balancers
+  - { name: "lb-01", type: "A", value: "10.100.0.6" }
+  - { name: "lb-02", type: "A", value: "10.100.0.7" }
+  - { name: "k3s-api", type: "A", value: "10.100.0.5" }  # VIP
+  
+  # Control Plane
+  - { name: "k3s-cp-01", type: "A", value: "10.100.0.10" }
+  - { name: "k3s-cp-02", type: "A", value: "10.100.0.11" }
+  - { name: "k3s-cp-03", type: "A", value: "10.100.0.12" }
+  
+  # Workers
+  - { name: "k3s-worker-01", type: "A", value: "10.100.0.20" }
+  - { name: "k3s-worker-02", type: "A", value: "10.100.0.21" }
+  - { name: "k3s-worker-03", type: "A", value: "10.100.0.22" }
+  
+  # Services
+  - { name: "vault", type: "CNAME", value: "k3s-worker-01" }
+  - { name: "aiops", type: "CNAME", value: "k3s-api" }
+  - { name: "minio", type: "CNAME", value: "k3s-worker-01" }
+  
+  # Wildcard for k3s ingress
+  - { name: "*.k3s", type: "A", value: "10.100.0.5" }

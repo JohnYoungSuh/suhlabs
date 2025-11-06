@@ -134,3 +134,27 @@ all:
         bastion-01:
           ansible_host: 10.100.0.254
           bastion_external_ip: "{{ lookup('env', 'BASTION_EXTERNAL_IP') }}"
+
+    # Infrastructure Services
+    dns_servers:
+      vars:
+        dns_domain: corp.example.com
+        dns_server_type: master
+      hosts:
+        dns-01:
+          ansible_host: 10.100.0.50
+          dns_server_type: master
+
+        dns-02:
+          ansible_host: 10.100.0.51
+          dns_server_type: slave
+          dns_master_ip: 10.100.0.50
+
+    freeipa_servers:
+      vars:
+        freeipa_domain: corp.example.com
+        freeipa_realm: CORP.EXAMPLE.COM
+      hosts:
+        ipa-01:
+          ansible_host: 10.100.0.60
+          freeipa_hostname: ipa

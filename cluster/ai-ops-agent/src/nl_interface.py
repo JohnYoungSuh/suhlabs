@@ -23,6 +23,12 @@ class Intent(Enum):
     LIST_PERMISSIONS = "list_permissions"
     RESTART_APP = "restart_app"
     VIEW_LOGS = "view_logs"
+    # Jira intents
+    CREATE_JIRA_ISSUE = "create_jira_issue"
+    UPDATE_JIRA_ISSUE = "update_jira_issue"
+    SEARCH_JIRA_ISSUES = "search_jira_issues"
+    COMMENT_JIRA_ISSUE = "comment_jira_issue"
+    TRANSITION_JIRA_ISSUE = "transition_jira_issue"
     UNKNOWN = "unknown"
 
 
@@ -115,12 +121,43 @@ class NLInterfaceEngine:
             r"reboot",
             r"reset",
         ],
+        Intent.CREATE_JIRA_ISSUE: [
+            r"create.*(?:task|story|bug|issue|ticket).*(?:for|about|to)",
+            r"(?:track|log).*(?:in jira|as (?:task|issue|ticket))",
+            r"need.*jira.*(?:task|issue|story|ticket)",
+            r"make.*jira.*(?:ticket|issue)",
+            r"file.*(?:bug|issue|ticket)",
+            r"open.*(?:task|ticket|issue)",
+        ],
+        Intent.UPDATE_JIRA_ISSUE: [
+            r"update.*(?:task|issue|ticket).*(?:[A-Z]+-\d+|\w+-\d+)",
+            r"change.*(?:status|priority|assignee).*(?:[A-Z]+-\d+)",
+            r"modify.*(?:[A-Z]+-\d+)",
+            r"edit.*jira.*(?:issue|task)",
+        ],
+        Intent.SEARCH_JIRA_ISSUES: [
+            r"(?:find|search|show|list).*(?:tasks?|issues?|tickets?)",
+            r"what.*(?:tasks?|issues?).*(?:assigned|open|in progress)",
+            r"show.*(?:my|all).*(?:jira|tasks?|issues?)",
+            r"list.*jira",
+        ],
+        Intent.COMMENT_JIRA_ISSUE: [
+            r"(?:add|post).*comment.*(?:[A-Z]+-\d+)",
+            r"comment.*(?:on|to).*(?:[A-Z]+-\d+)",
+        ],
+        Intent.TRANSITION_JIRA_ISSUE: [
+            r"move.*(?:[A-Z]+-\d+).*(?:to do|in progress|done)",
+            r"(?:mark|set).*(?:[A-Z]+-\d+).*(?:as|to).*(?:done|complete|in progress)",
+            r"close.*(?:[A-Z]+-\d+)",
+            r"start.*(?:working on|task).*(?:[A-Z]+-\d+)",
+        ],
     }
     
-    def __init__(self, ollama_client, vault_client, k8s_client):
+    def __init__(self, ollama_client, vault_client, k8s_client, mcp_jira_client=None):
         self.ollama = ollama_client
         self.vault = vault_client
         self.k8s = k8s_client
+        self.mcp_jira = mcp_jira_client
     
     def process_request(
         self,
@@ -316,8 +353,14 @@ JSON:
             Intent.ADD_DATABASE: ['developers', 'admins'],
             Intent.VIEW_LOGS: ['developers', 'admins'],
             Intent.RESTART_APP: ['developers', 'admins'],
+            # Jira permissions
+            Intent.CREATE_JIRA_ISSUE: ['users', 'developers', 'admins'],
+            Intent.UPDATE_JIRA_ISSUE: ['users', 'developers', 'admins'],
+            Intent.SEARCH_JIRA_ISSUES: ['users', 'developers', 'admins'],
+            Intent.COMMENT_JIRA_ISSUE: ['users', 'developers', 'admins'],
+            Intent.TRANSITION_JIRA_ISSUE: ['users', 'developers', 'admins'],
         }
-        
+
         required_groups = permission_map.get(intent, ['admins'])
         return any(group in user_context.groups for group in required_groups)
     
@@ -355,6 +398,17 @@ JSON:
             return self._view_logs(parsed.parameters, user_context)
         elif parsed.intent == Intent.RESTART_APP:
             return self._restart_app(parsed.parameters, user_context)
+        # Jira actions
+        elif parsed.intent == Intent.CREATE_JIRA_ISSUE:
+            return self._create_jira_issue(parsed.parameters, user_context)
+        elif parsed.intent == Intent.UPDATE_JIRA_ISSUE:
+            return self._update_jira_issue(parsed.parameters, user_context)
+        elif parsed.intent == Intent.SEARCH_JIRA_ISSUES:
+            return self._search_jira_issues(parsed.parameters, user_context)
+        elif parsed.intent == Intent.COMMENT_JIRA_ISSUE:
+            return self._comment_jira_issue(parsed.parameters, user_context)
+        elif parsed.intent == Intent.TRANSITION_JIRA_ISSUE:
+            return self._transition_jira_issue(parsed.parameters, user_context)
         else:
             raise ValueError(f"Unknown intent: {parsed.intent}")
     
@@ -429,7 +483,201 @@ JSON:
     def _show_usage(self, user_context: UserContext) -> Dict:
         """Show resource usage"""
         return self._get_current_usage(user_context)
-    
+
+    def _add_database(self, params: Dict, user_context: UserContext) -> Dict:
+        """Add a database"""
+        # Implementation would deploy database (PostgreSQL, MySQL, etc.)
+        pass
+
+    def _view_logs(self, params: Dict, user_context: UserContext) -> Dict:
+        """View application logs"""
+        # Implementation would retrieve pod logs
+        pass
+
+    def _restart_app(self, params: Dict, user_context: UserContext) -> Dict:
+        """Restart application"""
+        # Implementation would rollout restart deployment
+        pass
+
+    # ========== Jira Action Executors ==========
+
+    def _create_jira_issue(self, params: Dict, user_context: UserContext) -> Dict:
+        """Create a Jira issue via MCP"""
+        if not self.mcp_jira:
+            return {
+                "status": "error",
+                "message": "Jira integration not available. Contact your admin."
+            }
+
+        # Extract parameters
+        issue_type = params.get('issue_type', 'Task')
+        summary = params.get('summary', params.get('name', 'Untitled issue'))
+        description = params.get('description', '')
+        priority = params.get('priority', 'Medium')
+        labels = params.get('labels', [])
+
+        # Call MCP Jira server
+        result = self.mcp_jira.create_issue(
+            project_key=params.get('project_key', 'HOMELAB'),
+            issue_type=issue_type,
+            summary=summary,
+            description=description,
+            priority=priority,
+            labels=labels,
+            assignee=user_context.username if params.get('assign_to_me') else None
+        )
+
+        return {
+            "type": "jira_issue_created",
+            "issue_key": result.get('issue', {}).get('issue_key'),
+            "issue_url": result.get('issue', {}).get('url'),
+            "summary": summary,
+            "message": f"Created {result.get('issue', {}).get('issue_key')}: {summary}"
+        }
+
+    def _update_jira_issue(self, params: Dict, user_context: UserContext) -> Dict:
+        """Update a Jira issue via MCP"""
+        if not self.mcp_jira:
+            return {
+                "status": "error",
+                "message": "Jira integration not available. Contact your admin."
+            }
+
+        issue_key = params.get('issue_key')
+        if not issue_key:
+            # Try to extract from text
+            import re
+            match = re.search(r'([A-Z]+-\d+)', str(params))
+            if match:
+                issue_key = match.group(1)
+            else:
+                return {
+                    "status": "error",
+                    "message": "Issue key not found. Please specify issue key (e.g., HOMELAB-123)"
+                }
+
+        # Build update fields
+        update_fields = {}
+        if 'summary' in params:
+            update_fields['summary'] = params['summary']
+        if 'description' in params:
+            update_fields['description'] = params['description']
+        if 'priority' in params:
+            update_fields['priority'] = params['priority']
+        if 'labels' in params:
+            update_fields['labels'] = params['labels']
+        if 'assignee' in params:
+            update_fields['assignee'] = params['assignee']
+
+        result = self.mcp_jira.update_issue(
+            issue_key=issue_key,
+            **update_fields
+        )
+
+        return {
+            "type": "jira_issue_updated",
+            "issue_key": issue_key,
+            "message": f"Updated {issue_key}"
+        }
+
+    def _search_jira_issues(self, params: Dict, user_context: UserContext) -> Dict:
+        """Search Jira issues via MCP"""
+        if not self.mcp_jira:
+            return {
+                "status": "error",
+                "message": "Jira integration not available. Contact your admin."
+            }
+
+        # Build JQL query
+        jql_parts = []
+
+        # Default to user's project
+        project = params.get('project', 'HOMELAB')
+        jql_parts.append(f"project={project}")
+
+        # Filter by status
+        if 'status' in params:
+            jql_parts.append(f"status='{params['status']}'")
+        elif 'open' in str(params).lower():
+            jql_parts.append("status IN ('To Do', 'In Progress')")
+
+        # Filter by assignee
+        if params.get('my_issues') or 'my' in str(params).lower():
+            jql_parts.append(f"assignee='{user_context.username}'")
+
+        jql = " AND ".join(jql_parts)
+
+        result = self.mcp_jira.search_issues(
+            jql=jql,
+            max_results=params.get('max_results', 20)
+        )
+
+        return {
+            "type": "jira_search_results",
+            "total": result.get('total', 0),
+            "issues": result.get('issues', []),
+            "message": f"Found {result.get('total', 0)} issues"
+        }
+
+    def _comment_jira_issue(self, params: Dict, user_context: UserContext) -> Dict:
+        """Add comment to Jira issue via MCP"""
+        if not self.mcp_jira:
+            return {
+                "status": "error",
+                "message": "Jira integration not available. Contact your admin."
+            }
+
+        issue_key = params.get('issue_key')
+        comment = params.get('comment', params.get('text', ''))
+
+        if not issue_key or not comment:
+            return {
+                "status": "error",
+                "message": "Issue key and comment text are required"
+            }
+
+        result = self.mcp_jira.add_comment(
+            issue_key=issue_key,
+            comment=comment
+        )
+
+        return {
+            "type": "jira_comment_added",
+            "issue_key": issue_key,
+            "message": f"Added comment to {issue_key}"
+        }
+
+    def _transition_jira_issue(self, params: Dict, user_context: UserContext) -> Dict:
+        """Transition Jira issue status via MCP"""
+        if not self.mcp_jira:
+            return {
+                "status": "error",
+                "message": "Jira integration not available. Contact your admin."
+            }
+
+        issue_key = params.get('issue_key')
+        transition_name = params.get('transition', params.get('status', 'In Progress'))
+
+        if not issue_key:
+            return {
+                "status": "error",
+                "message": "Issue key is required"
+            }
+
+        result = self.mcp_jira.transition_issue(
+            issue_key=issue_key,
+            transition_name=transition_name
+        )
+
+        return {
+            "type": "jira_issue_transitioned",
+            "issue_key": issue_key,
+            "new_status": transition_name,
+            "message": f"Moved {issue_key} to {transition_name}"
+        }
+
+    # ========== Helper Methods ==========
+
     def _get_current_usage(self, user_context: UserContext) -> Dict:
         """Get current resource usage for user's team"""
         # Query Kubernetes for actual usage

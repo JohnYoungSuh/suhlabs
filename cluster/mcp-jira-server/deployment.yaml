@@ -1,0 +1,190 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mcp-jira-server
+  namespace: default
+  labels:
+    app: mcp-jira-server
+    component: mcp-server
+    version: v1
+spec:
+  replicas: 2  # High availability with 2 replicas
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  selector:
+    matchLabels:
+      app: mcp-jira-server
+  template:
+    metadata:
+      labels:
+        app: mcp-jira-server
+        component: mcp-server
+        version: v1
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "8001"
+        prometheus.io/path: "/metrics"
+    spec:
+      serviceAccountName: default
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        fsGroup: 1000
+
+      containers:
+      - name: mcp-jira-server
+        image: mcp-jira-server:latest  # Update with your registry
+        imagePullPolicy: IfNotPresent
+
+        ports:
+        - name: mcp
+          containerPort: 8001
+          protocol: TCP
+
+        env:
+        # Environment variables from ConfigMap
+        - name: MCP_SERVER_HOST
+          valueFrom:
+            configMapKeyRef:
+              name: mcp-jira-config
+              key: MCP_SERVER_HOST
+        - name: MCP_SERVER_PORT
+          valueFrom:
+            configMapKeyRef:
+              name: mcp-jira-config
+              key: MCP_SERVER_PORT
+        - name: MCP_SERVER_LOG_LEVEL
+          valueFrom:
+            configMapKeyRef:
+              name: mcp-jira-config
+              key: MCP_SERVER_LOG_LEVEL
+
+        # Jira connection settings from Secret
+        - name: JIRA_URL
+          valueFrom:
+            secretKeyRef:
+              name: mcp-jira-secret
+              key: JIRA_URL
+        - name: JIRA_USER_EMAIL
+          valueFrom:
+            secretKeyRef:
+              name: mcp-jira-secret
+              key: JIRA_USER_EMAIL
+        - name: JIRA_API_TOKEN
+          valueFrom:
+            secretKeyRef:
+              name: mcp-jira-secret
+              key: JIRA_API_TOKEN
+
+        # Jira API settings from ConfigMap
+        - name: JIRA_TIMEOUT
+          valueFrom:
+            configMapKeyRef:
+              name: mcp-jira-config
+              key: JIRA_TIMEOUT
+        - name: JIRA_MAX_RETRIES
+          valueFrom:
+            configMapKeyRef:
+              name: mcp-jira-config
+              key: JIRA_MAX_RETRIES
+        - name: JIRA_RATE_LIMIT
+          valueFrom:
+            configMapKeyRef:
+              name: mcp-jira-config
+              key: JIRA_RATE_LIMIT
+        - name: JIRA_DEFAULT_PROJECT
+          valueFrom:
+            configMapKeyRef:
+              name: mcp-jira-config
+              key: JIRA_DEFAULT_PROJECT
+        - name: JIRA_DEFAULT_ISSUE_TYPE
+          valueFrom:
+            configMapKeyRef:
+              name: mcp-jira-config
+              key: JIRA_DEFAULT_ISSUE_TYPE
+        - name: JIRA_MAX_RESULTS
+          valueFrom:
+            configMapKeyRef:
+              name: mcp-jira-config
+              key: JIRA_MAX_RESULTS
+
+        # Mount config file
+        volumeMounts:
+        - name: config
+          mountPath: /app/config/jira.yaml
+          subPath: jira.yaml
+          readOnly: true
+
+        # Resource limits
+        resources:
+          requests:
+            cpu: 200m
+            memory: 256Mi
+          limits:
+            cpu: 500m
+            memory: 512Mi
+
+        # Liveness probe
+        livenessProbe:
+          exec:
+            command:
+            - python
+            - -c
+            - "import sys; sys.exit(0)"
+          initialDelaySeconds: 10
+          periodSeconds: 30
+          timeoutSeconds: 5
+          failureThreshold: 3
+
+        # Readiness probe
+        readinessProbe:
+          exec:
+            command:
+            - python
+            - -c
+            - "import sys; sys.exit(0)"
+          initialDelaySeconds: 5
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 3
+
+        # Security context
+        securityContext:
+          allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: true
+          runAsNonRoot: true
+          runAsUser: 1000
+          capabilities:
+            drop:
+            - ALL
+
+      volumes:
+      - name: config
+        configMap:
+          name: mcp-jira-config
+          items:
+          - key: jira.yaml
+            path: jira.yaml
+
+      # Pod affinity for HA
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+          - weight: 100
+            podAffinityTerm:
+              labelSelector:
+                matchExpressions:
+                - key: app
+                  operator: In
+                  values:
+                  - mcp-jira-server
+              topologyKey: kubernetes.io/hostname
+
+      # Restart policy
+      restartPolicy: Always
+
+      # Termination grace period
+      terminationGracePeriodSeconds: 30

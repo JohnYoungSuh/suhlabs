@@ -1,0 +1,30 @@
+# Jira MCP Server Configuration
+
+# Custom field mappings (these vary by Jira instance)
+# To find your custom field IDs:
+# 1. Go to Jira → Settings → Issues → Custom Fields
+# 2. Edit a custom field and look at the URL for the field ID
+# 3. Or use the Jira API: GET /rest/api/3/field
+custom_fields:
+  story_points: customfield_10016
+  epic_link: customfield_10014
+  sprint: customfield_10020
+
+# Issue type ID mappings (these vary by Jira instance)
+# To find your issue type IDs:
+# Use the Jira API: GET /rest/api/3/issuetype
+issue_types:
+  story: 10001
+  task: 10002
+  bug: 10003
+  epic: 10000
+  subtask: 10004
+
+# Jira connection settings (override environment variables)
+jira:
+  default_project: HOMELAB
+  default_issue_type: Task
+  max_results: 100
+  timeout: 30
+  retry_attempts: 3
+  rate_limit: 10  # requests per second

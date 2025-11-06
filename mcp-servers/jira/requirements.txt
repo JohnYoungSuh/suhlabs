@@ -1,0 +1,35 @@
+# MCP Jira Server Dependencies
+
+# MCP Protocol
+mcp>=0.9.0
+
+# HTTP Client
+httpx>=0.25.0
+aiohttp>=3.9.0
+
+# Jira Client Library (optional, we'll use httpx directly)
+# jira>=3.5.0
+
+# Configuration
+pydantic>=2.5.0
+pydantic-settings>=2.1.0
+python-dotenv>=1.0.0
+pyyaml>=6.0.1
+
+# Logging
+structlog>=23.2.0
+
+# Utilities
+tenacity>=8.2.3  # Retry logic
+ratelimit>=2.2.1  # Rate limiting
+
+# Testing
+pytest>=7.4.3
+pytest-asyncio>=0.21.1
+pytest-mock>=3.12.0
+respx>=0.20.2  # HTTP mocking
+
+# Development
+black>=23.12.0
+ruff>=0.1.8
+mypy>=1.7.1

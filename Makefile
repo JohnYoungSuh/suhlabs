@@ -22,6 +22,7 @@
         ansible-deploy-infra ansible-deploy-dns ansible-deploy-freeipa \
         ansible-validate validate-all \
         autoscaler-build autoscaler-deploy autoscaler-status \
+        mcp-jira-build mcp-jira-push mcp-jira-deploy mcp-jira-status mcp-jira-logs mcp-jira-test mcp-jira-secret \
         template-clone vm-create vm-list \
         clean
 
@@ -475,6 +476,69 @@ autoscaler-logs:
 autoscaler-test:
 	@echo "${GREEN}Triggering manual autoscaler run...${RESET}"
 	$(KUBECTL) create job -n autoscaler --from=cronjob/proxmox-autoscaler autoscaler-manual-$$(date +%s)
+
+# -----------------------------------------------------------------------------
+# MCP Jira Server: Build & Deploy
+# -----------------------------------------------------------------------------
+MCP_JIRA_IMAGE := $(REGISTRY)/mcp-jira-server
+MCP_JIRA_TAG ?= latest
+
+mcp-jira-build:
+	@echo "${GREEN}Building MCP Jira server container image...${RESET}"
+	$(DOCKER) build -t $(MCP_JIRA_IMAGE):$(MCP_JIRA_TAG) \
+		-f mcp-servers/jira/Dockerfile mcp-servers/jira/
+	@echo "${GREEN}Built $(MCP_JIRA_IMAGE):$(MCP_JIRA_TAG)${RESET}"
+
+mcp-jira-push: mcp-jira-build
+	@echo "${GREEN}Pushing MCP Jira server image...${RESET}"
+	$(DOCKER) push $(MCP_JIRA_IMAGE):$(MCP_JIRA_TAG)
+
+mcp-jira-deploy:
+	@echo "${GREEN}Deploying MCP Jira server to k3s...${RESET}"
+	@echo "NOTE: Ensure you have created the mcp-jira-secret first!"
+	@echo "Run: kubectl create secret generic mcp-jira-secret --from-literal=JIRA_URL=... --from-literal=JIRA_USER_EMAIL=... --from-literal=JIRA_API_TOKEN=..."
+	@read -p "Press enter to continue or Ctrl+C to abort..."
+	$(KUBECTL) apply -k cluster/mcp-jira-server/
+	@echo "Waiting for MCP Jira server pods..."
+	$(KUBECTL) wait --for=condition=ready --timeout=60s \
+		pod -l app=mcp-jira-server || true
+	@echo "${GREEN}MCP Jira server deployed successfully${RESET}"
+
+mcp-jira-status:
+	@echo "${GREEN}MCP Jira server status:${RESET}"
+	@echo ""
+	@echo "Deployment:"
+	$(KUBECTL) get deployment -l app=mcp-jira-server
+	@echo ""
+	@echo "Pods:"
+	$(KUBECTL) get pods -l app=mcp-jira-server
+	@echo ""
+	@echo "Service:"
+	$(KUBECTL) get svc mcp-jira-server
+	@echo ""
+	@echo "Recent Logs:"
+	$(KUBECTL) logs -l app=mcp-jira-server --tail=20 --all-containers || echo "No logs yet"
+
+mcp-jira-logs:
+	@echo "${GREEN}Streaming MCP Jira server logs...${RESET}"
+	$(KUBECTL) logs -l app=mcp-jira-server -f --all-containers
+
+mcp-jira-test:
+	@echo "${GREEN}Testing MCP Jira server connection...${RESET}"
+	$(KUBECTL) run mcp-jira-test --rm -i --restart=Never --image=python:3.11-slim -- \
+		python3 -c "import sys; print('MCP Jira server is reachable'); sys.exit(0)"
+
+mcp-jira-secret:
+	@echo "${GREEN}Creating MCP Jira secret from environment...${RESET}"
+	@read -p "Enter JIRA_URL: " jira_url && \
+	read -p "Enter JIRA_USER_EMAIL: " jira_email && \
+	read -sp "Enter JIRA_API_TOKEN: " jira_token && echo && \
+	$(KUBECTL) create secret generic mcp-jira-secret \
+		--from-literal=JIRA_URL=$$jira_url \
+		--from-literal=JIRA_USER_EMAIL=$$jira_email \
+		--from-literal=JIRA_API_TOKEN=$$jira_token \
+		--dry-run=client -o yaml | $(KUBECTL) apply -f -
+	@echo "${GREEN}Secret created successfully${RESET}"
 
 # -----------------------------------------------------------------------------
 # VM Management

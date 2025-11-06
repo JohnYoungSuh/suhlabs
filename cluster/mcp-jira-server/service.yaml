@@ -1,0 +1,37 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: mcp-jira-server
+  namespace: default
+  labels:
+    app: mcp-jira-server
+    component: mcp-server
+spec:
+  type: ClusterIP  # Internal service only
+  selector:
+    app: mcp-jira-server
+  ports:
+  - name: mcp
+    port: 8001
+    targetPort: 8001
+    protocol: TCP
+  sessionAffinity: None
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: mcp-jira-server-headless
+  namespace: default
+  labels:
+    app: mcp-jira-server
+    component: mcp-server
+spec:
+  type: ClusterIP
+  clusterIP: None  # Headless service for direct pod communication
+  selector:
+    app: mcp-jira-server
+  ports:
+  - name: mcp
+    port: 8001
+    targetPort: 8001
+    protocol: TCP

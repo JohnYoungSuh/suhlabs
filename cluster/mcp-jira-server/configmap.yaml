@@ -1,0 +1,48 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: mcp-jira-config
+  namespace: default
+  labels:
+    app: mcp-jira-server
+    component: mcp-server
+data:
+  # MCP Server Configuration
+  MCP_SERVER_HOST: "0.0.0.0"
+  MCP_SERVER_PORT: "8001"
+  MCP_SERVER_LOG_LEVEL: "INFO"
+
+  # Jira API Settings
+  JIRA_TIMEOUT: "30"
+  JIRA_MAX_RETRIES: "3"
+  JIRA_RATE_LIMIT: "10"
+  JIRA_DEFAULT_PROJECT: "HOMELAB"
+  JIRA_DEFAULT_ISSUE_TYPE: "Task"
+  JIRA_MAX_RESULTS: "100"
+
+  # Jira Configuration File
+  jira.yaml: |
+    # Custom field mappings (update these based on your Jira instance)
+    # To find custom field IDs, use: GET /rest/api/3/field
+    custom_fields:
+      story_points: customfield_10016
+      epic_link: customfield_10014
+      sprint: customfield_10020
+
+    # Issue type ID mappings (update these based on your Jira instance)
+    # To find issue type IDs, use: GET /rest/api/3/issuetype
+    issue_types:
+      story: 10001
+      task: 10002
+      bug: 10003
+      epic: 10000
+      subtask: 10004
+
+    # Default settings
+    jira:
+      default_project: HOMELAB
+      default_issue_type: Task
+      max_results: 100
+      timeout: 30
+      retry_attempts: 3
+      rate_limit: 10

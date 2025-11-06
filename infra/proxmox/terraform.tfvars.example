@@ -1,0 +1,68 @@
+# Example Terraform variables
+# Copy to terraform.tfvars and customize
+
+#-----------------------------------
+# Proxmox Connection
+#-----------------------------------
+proxmox_api_url          = "https://proxmox.corp.example.com:8006/api2/json"
+proxmox_api_token_id     = "terraform@pam!terraform"
+proxmox_api_token_secret = "your-secret-token-here"
+proxmox_nodes            = ["proxmox-01", "proxmox-02", "proxmox-03"]
+
+#-----------------------------------
+# Environment
+#-----------------------------------
+environment = "production"
+domain      = "corp.example.com"
+
+#-----------------------------------
+# Network
+#-----------------------------------
+vpc_cidr                = "10.100.0.0/24"
+create_isolated_network = true
+vpc_bridge_id           = 10
+vlan_id                 = 100
+admin_cidr              = "192.168.1.0/24"  # Your admin network
+dns_servers             = "8.8.8.8 1.1.1.1"
+
+#-----------------------------------
+# VM Template
+#-----------------------------------
+vm_template_name = "centos9-cloud"
+storage_pool     = "ceph-rbd"
+vm_user          = "cloud-user"
+
+ssh_public_keys = [
+  "ssh-rsa AAAAB3NzaC1... user@hostname",
+]
+
+#-----------------------------------
+# Cluster Sizing
+#-----------------------------------
+control_plane_count  = 3
+control_plane_cpu    = 4
+control_plane_memory = 8192
+control_plane_disk_size = "50G"
+
+worker_min_count  = 3
+worker_max_count  = 10
+worker_cpu        = 8
+worker_memory     = 16384
+worker_disk_size  = "100G"
+
+ha_lb_count = 2
+
+#-----------------------------------
+# Autoscaling
+#-----------------------------------
+autoscaling_enabled         = true
+scale_up_cpu_threshold      = 70
+scale_up_memory_threshold   = 80
+scale_down_cpu_threshold    = 30
+scale_down_memory_threshold = 40
+scale_cooldown_seconds      = 300
+
+#-----------------------------------
+# Bastion
+#-----------------------------------
+create_bastion = true

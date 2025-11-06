@@ -17,6 +17,9 @@
         vault-up vault-down \
         ollama-pull \
         migrate-state \
+        packer-build packer-validate \
+        autoscaler-build autoscaler-deploy autoscaler-status \
+        template-clone vm-create vm-list \
         clean
 
 # -----------------------------------------------------------------------------
@@ -72,6 +75,16 @@ help:
 	@echo "  init-prod        Initialize Terraform with Proxmox backend"
 	@echo "  apply-prod       Apply Terraform to Proxmox"
 	@echo "  migrate-state    Migrate state from local → prod"
+	@echo ""
+	@echo "${GREEN}Image Building:${RESET}"
+	@echo "  packer-validate  Validate Packer template"
+	@echo "  packer-build     Build CentOS 9 cloud-init template"
+	@echo "  autoscaler-build Build and push autoscaler container"
+	@echo ""
+	@echo "${GREEN}Autoscaling:${RESET}"
+	@echo "  autoscaler-deploy Deploy autoscaler to k3s"
+	@echo "  autoscaler-status Check autoscaler status"
+	@echo "  vm-list          List all VMs with autoscale tags"
 	@echo ""
 	@echo "${GREEN}Shared:${RESET}"
 	@echo "  lint             Run all linters"
@@ -246,6 +259,97 @@ sign: sbom
 	@echo "${GREEN}Signing SBOM and manifests...${RESET}"
 	$(COSIGN) sign-blob --key cosign.key sbom.json > sbom.json.sig
 	$(COSIGN) sign-blob --key cosign.key cluster/k3s/apps/ai-ops-agent/deployment.yaml > deployment.yaml.sig
+
+# -----------------------------------------------------------------------------
+# Packer: VM Template Building
+# -----------------------------------------------------------------------------
+PACKER := packer
+PACKER_TEMPLATE := packer/centos9-cloudinit.pkr.hcl
+
+packer-validate:
+	@echo "${GREEN}Validating Packer template...${RESET}"
+	cd packer && $(PACKER) validate centos9-cloudinit.pkr.hcl
+
+packer-build: packer-validate
+	@echo "${GREEN}Building CentOS 9 cloud-init template with Packer...${RESET}"
+	@echo "This will create a VM template on Proxmox node"
+	@echo "Ensure PM_API_URL, PM_API_TOKEN_ID, PM_API_TOKEN_SECRET are set"
+	cd packer && $(PACKER) build centos9-cloudinit.pkr.hcl
+	@echo "${GREEN}Template 'centos9-cloud' created successfully${RESET}"
+
+packer-debug:
+	@echo "${GREEN}Building with debug output...${RESET}"
+	cd packer && PACKER_LOG=1 $(PACKER) build -debug centos9-cloudinit.pkr.hcl
+
+# -----------------------------------------------------------------------------
+# Autoscaler: Build & Deploy
+# -----------------------------------------------------------------------------
+REGISTRY ?= registry.corp.example.com
+AUTOSCALER_IMAGE := $(REGISTRY)/proxmox-autoscaler
+AUTOSCALER_TAG ?= latest
+
+autoscaler-build:
+	@echo "${GREEN}Building autoscaler container image...${RESET}"
+	$(DOCKER) build -t $(AUTOSCALER_IMAGE):$(AUTOSCALER_TAG) \
+		-f cluster/autoscaler/Dockerfile .
+	@echo "${GREEN}Built $(AUTOSCALER_IMAGE):$(AUTOSCALER_TAG)${RESET}"
+
+autoscaler-push: autoscaler-build
+	@echo "${GREEN}Pushing autoscaler image...${RESET}"
+	$(DOCKER) push $(AUTOSCALER_IMAGE):$(AUTOSCALER_TAG)
+
+autoscaler-sign: autoscaler-push
+	@echo "${GREEN}Signing autoscaler image...${RESET}"
+	$(COSIGN) sign --key cosign.key $(AUTOSCALER_IMAGE):$(AUTOSCALER_TAG)
+
+autoscaler-deploy:
+	@echo "${GREEN}Deploying autoscaler to k3s...${RESET}"
+	$(KUBECTL) apply -f cluster/autoscaler/deployment.yaml
+	@echo "Waiting for autoscaler CronJob to be created..."
+	$(KUBECTL) wait --for=condition=complete --timeout=60s \
+		-n autoscaler job -l app=proxmox-autoscaler || true
+	@echo "${GREEN}Autoscaler deployed successfully${RESET}"
+
+autoscaler-status:
+	@echo "${GREEN}Autoscaler status:${RESET}"
+	@echo ""
+	@echo "CronJob:"
+	$(KUBECTL) get cronjob -n autoscaler
+	@echo ""
+	@echo "Recent Jobs:"
+	$(KUBECTL) get jobs -n autoscaler --sort-by=.metadata.creationTimestamp | tail -5
+	@echo ""
+	@echo "Recent Pods:"
+	$(KUBECTL) get pods -n autoscaler --sort-by=.metadata.creationTimestamp | tail -5
+	@echo ""
+	@echo "Recent Logs:"
+	$(KUBECTL) logs -n autoscaler -l app=proxmox-autoscaler --tail=20 || echo "No logs yet"
+
+autoscaler-logs:
+	$(KUBECTL) logs -n autoscaler -l app=proxmox-autoscaler -f
+
+autoscaler-test:
+	@echo "${GREEN}Triggering manual autoscaler run...${RESET}"
+	$(KUBECTL) create job -n autoscaler --from=cronjob/proxmox-autoscaler autoscaler-manual-$$(date +%s)
+
+# -----------------------------------------------------------------------------
+# VM Management
+# -----------------------------------------------------------------------------
+vm-list:
+	@echo "${GREEN}Listing VMs with autoscale tags...${RESET}"
+	@cd infra/proxmox && $(TERRAFORM) output -json autoscaling_config | jq -r '.asg_vmids[]'
+
+vm-scale-up:
+	@echo "${GREEN}Manually triggering scale up...${RESET}"
+	$(KUBECTL) exec -n autoscaler \
+		$$($(KUBECTL) get pod -n autoscaler -l app=proxmox-autoscaler -o jsonpath='{.items[0].metadata.name}') \
+		-- python3 /app/autoscaler.py --once --cpu-scale-up 0
+
+vm-scale-down:
+	@echo "${GREEN}Manually triggering scale down...${RESET}"
+	$(KUBECTL) exec -n autoscaler \
+		$$($(KUBECTL) get pod -n autoscaler -l app=proxmox-autoscaler -o jsonpath='{.items[0].metadata.name}') \
+		-- python3 /app/autoscaler.py --once --cpu-scale-down 100
 
 # -----------------------------------------------------------------------------
 # Cleanup

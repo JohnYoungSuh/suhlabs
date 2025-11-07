@@ -1,7 +1,7 @@
 #!/bin/bash
 # =============================================================================
 # Install Development Tools for AIOps Substrate
-# Installs: kind, kubectl, helm, ansible
+# Installs: terraform, packer, kubectl, kind, helm, ansible
 # Platform: Linux/WSL2
 # =============================================================================
 
@@ -35,9 +35,43 @@ echo "Detected architecture: $ARCH"
 echo ""
 
 # -----------------------------------------------------------------------------
-# 1. Install kubectl
+# 1. Install Terraform
 # -----------------------------------------------------------------------------
-echo -e "${GREEN}[1/4] Installing kubectl...${NC}"
+echo -e "${GREEN}[1/6] Installing Terraform...${NC}"
+if command -v terraform &> /dev/null; then
+    echo "terraform already installed: $(terraform version -json | grep -o '"version":"[^"]*' | cut -d'"' -f4)"
+else
+    TERRAFORM_VERSION="1.6.6"
+    curl -Lo terraform.zip "https://releases.hashicorp.com/terraform/${TERRAFORM_VERSION}/terraform_${TERRAFORM_VERSION}_linux_${ARCH}.zip"
+    unzip terraform.zip
+    chmod +x terraform
+    sudo mv terraform /usr/local/bin/
+    rm terraform.zip
+    echo "terraform installed: $(terraform version -json | grep -o '"version":"[^"]*' | cut -d'"' -f4)"
+fi
+echo ""
+
+# -----------------------------------------------------------------------------
+# 2. Install Packer
+# -----------------------------------------------------------------------------
+echo -e "${GREEN}[2/6] Installing Packer...${NC}"
+if command -v packer &> /dev/null; then
+    echo "packer already installed: $(packer version)"
+else
+    PACKER_VERSION="1.10.0"
+    curl -Lo packer.zip "https://releases.hashicorp.com/packer/${PACKER_VERSION}/packer_${PACKER_VERSION}_linux_${ARCH}.zip"
+    unzip packer.zip
+    chmod +x packer
+    sudo mv packer /usr/local/bin/
+    rm packer.zip
+    echo "packer installed: $(packer version)"
+fi
+echo ""
+
+# -----------------------------------------------------------------------------
+# 3. Install kubectl
+# -----------------------------------------------------------------------------
+echo -e "${GREEN}[3/6] Installing kubectl...${NC}"
 if command -v kubectl &> /dev/null; then
     echo "kubectl already installed: $(kubectl version --client --short 2>/dev/null || kubectl version --client)"
 else
@@ -50,9 +84,9 @@ fi
 echo ""
 
 # -----------------------------------------------------------------------------
-# 2. Install kind
+# 4. Install kind
 # -----------------------------------------------------------------------------
-echo -e "${GREEN}[2/4] Installing kind...${NC}"
+echo -e "${GREEN}[4/6] Installing kind...${NC}"
 if command -v kind &> /dev/null; then
     echo "kind already installed: $(kind version)"
 else
@@ -65,9 +99,9 @@ fi
 echo ""
 
 # -----------------------------------------------------------------------------
-# 3. Install Helm
+# 5. Install Helm
 # -----------------------------------------------------------------------------
-echo -e "${GREEN}[3/4] Installing Helm...${NC}"
+echo -e "${GREEN}[5/6] Installing Helm...${NC}"
 if command -v helm &> /dev/null; then
     echo "helm already installed: $(helm version --short)"
 else
@@ -77,9 +111,9 @@ fi
 echo ""
 
 # -----------------------------------------------------------------------------
-# 4. Install Ansible
+# 6. Install Ansible
 # -----------------------------------------------------------------------------
-echo -e "${GREEN}[4/4] Installing Ansible...${NC}"
+echo -e "${GREEN}[6/6] Installing Ansible...${NC}"
 if command -v ansible &> /dev/null; then
     echo "ansible already installed: $(ansible --version | head -n1)"
 else
@@ -98,6 +132,20 @@ echo -e "${YELLOW}Verifying installations...${NC}"
 echo ""
 
 ERRORS=0
+
+if command -v terraform &> /dev/null; then
+    echo -e "${GREEN}✓${NC} terraform: $(terraform version -json | grep -o '"version":"[^"]*' | cut -d'"' -f4)"
+else
+    echo -e "${RED}✗${NC} terraform: NOT FOUND"
+    ((ERRORS++))
+fi
+
+if command -v packer &> /dev/null; then
+    echo -e "${GREEN}✓${NC} packer: $(packer version)"
+else
+    echo -e "${RED}✗${NC} packer: NOT FOUND"
+    ((ERRORS++))
+fi
 
 if command -v kubectl &> /dev/null; then
     echo -e "${GREEN}✓${NC} kubectl: $(kubectl version --client --short 2>/dev/null || kubectl version --client)"

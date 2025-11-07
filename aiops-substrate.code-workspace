@@ -62,13 +62,13 @@
 
     // Terraform
     "terraform.languageServer": {
-      "enabled": true,
-      "args": []
+      "enabled": true
     },
     "terraform.experimentalFeatures": {
       "validateOnSave": true,
       "prefillRequiredFields": true
     },
+    "terraform.validation.enableEnhancedValidation": false,
     "[terraform]": {
       "editor.defaultFormatter": "hashicorp.terraform",
       "editor.formatOnSave": true,

@@ -1,33 +1,74 @@
 {
-  "name": "AIOps Substrate (WSL2 + Docker)",
+  "name": "AIOps Substrate",
   "image": "mcr.microsoft.com/devcontainers/python:3.11",
+
   "features": {
-    "ghcr.io/devcontainers/features/docker-in-docker:2": {},
-    "ghcr.io/devcontainers/features/terraform:1": {},
-    "ghcr.io/devcontainers/features/ansible:1": {},
-    "ghcr.io/devcontainers/features/kubectl:1": {},
+    "ghcr.io/devcontainers/features/docker-in-docker:2": {
+      "version": "latest",
+      "moby": true
+    },
+    "ghcr.io/devcontainers/features/terraform:1": {
+      "version": "1.6.6"
+    },
+    "ghcr.io/devcontainers/features/kubectl-helm-minikube:1": {
+      "version": "latest",
+      "helm": "latest",
+      "minikube": "none"
+    },
+    "ghcr.io/devcontainers/features/ansible:1": {
+      "version": "latest"
+    },
     "ghcr.io/devcontainers/features/github-cli:1": {}
   },
-  "forwardPorts": [30080, 8200, 11434, 9000],
-  "postCreateCommand": "make init-local || true",
-  "remoteUser": "vscode",
-  "mounts": [
-    "source=/var/run/docker.sock,target=/var/run/docker.sock,type=bind"
+
+  "containerEnv": {
+    "DOCKER_BUILDKIT": "1"
+  },
+
+  "forwardPorts": [
+    30080,  // AI Ops Agent
+    8200,   // Vault
+    11434,  // Ollama
+    9000,   // MinIO
+    9001,   // MinIO Console
+    6443    // Kubernetes API
   ],
+
+  "portsAttributes": {
+    "30080": {"label": "AI Ops Agent"},
+    "8200": {"label": "Vault"},
+    "11434": {"label": "Ollama"},
+    "9000": {"label": "MinIO"},
+    "9001": {"label": "MinIO Console"},
+    "6443": {"label": "Kubernetes API"}
+  },
+
+  "postCreateCommand": "bash .devcontainer/setup.sh",
+
+  "remoteUser": "vscode",
+
   "customizations": {
     "vscode": {
       "extensions": [
         "hashicorp.terraform",
+        "hashicorp.hcl",
         "ms-python.python",
+        "ms-python.vscode-pylance",
+        "ms-python.black-formatter",
         "redhat.ansible",
+        "redhat.vscode-yaml",
         "ms-kubernetes-tools.vscode-kubernetes-tools",
-        "tamasfe.even-better-toml",
-        "github.vscode-pull-request-github",
         "ms-azuretools.vscode-docker",
-        "eamodio.gitlens"
+        "eamodio.gitlens",
+        "github.vscode-pull-request-github",
+        "yzhang.markdown-all-in-one",
+        "davidanson.vscode-markdownlint"
       ],
       "settings": {
-        "terminal.integrated.defaultProfile.linux": "bash"
+        "terminal.integrated.defaultProfile.linux": "bash",
+        "terraform.languageServer.enabled": true,
+        "ansible.python.interpreterPath": "/usr/local/bin/python",
+        "python.defaultInterpreterPath": "/usr/local/bin/python"
       }
     }
   }

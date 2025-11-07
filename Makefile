@@ -6,6 +6,7 @@
 # =============================================================================
 
 .PHONY: all help \
+        setup-tools \
         dev-up dev-down dev-logs \
         kind-up kind-down kind-export \
         init init-local init-prod \
@@ -66,6 +67,9 @@ help:
 	@echo "${YELLOW}AIOps Substrate – Makefile${RESET}"
 	@echo "Usage: make <target> [ENV=local|prod]"
 	@echo ""
+	@echo "${GREEN}Setup:${RESET}"
+	@echo "  setup-tools      Install dev tools (kubectl, kind, helm, ansible)"
+	@echo ""
 	@echo "${GREEN}Local Dev (Docker Desktop + WSL2):${RESET}"
 	@echo "  dev-up           Start full local stack (Vault, Ollama, MinIO, k3s)"
 	@echo "  dev-down         Stop and clean local stack"
@@ -108,6 +112,14 @@ help:
 	@echo "  sign             Sign artifacts (cosign)"
 	@echo "  clean            Remove .terraform, plans, logs"
 	@echo ""
+
+# -----------------------------------------------------------------------------
+# Setup Tools
+# -----------------------------------------------------------------------------
+setup-tools:
+	@echo "${GREEN}Installing development tools...${RESET}"
+	@chmod +x scripts/install-dev-tools.sh
+	@./scripts/install-dev-tools.sh
 
 # -----------------------------------------------------------------------------
 # Local Stack: Docker Compose + kind

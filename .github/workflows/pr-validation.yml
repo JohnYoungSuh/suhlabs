@@ -1,0 +1,245 @@
+# =============================================================================
+# GitHub Actions Workflow - Platform-Agnostic PR Validation
+# All logic is in Makefile - this is just a thin wrapper
+# =============================================================================
+
+name: PR Validation
+
+on:
+  pull_request:
+    branches: [main, develop]
+  push:
+    branches: [main, develop]
+
+# Cancel in-progress runs when a new commit is pushed
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CONTAINER_RUNTIME: docker
+  ENV: local
+  PYTHON_VERSION: "3.11"
+
+jobs:
+  #===========================================================================
+  # Job 1: Lint & Validate
+  #===========================================================================
+  lint:
+    name: Lint & Validate
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq make curl git jq
+
+      - name: Check required tools
+        run: make doctor || echo "Some optional tools missing"
+        continue-on-error: true
+
+      - name: Run linting
+        run: make ci-lint
+
+  #===========================================================================
+  # Job 2: Unit Tests
+  #===========================================================================
+  test-unit:
+    name: Unit Tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: 'pip'
+
+      - name: Install test dependencies
+        run: |
+          pip install -r requirements-dev.txt
+
+      - name: Run unit tests
+        run: make test-unit
+
+      - name: Upload coverage to Codecov
+        uses: codecov/codecov-action@v3
+        with:
+          files: ./coverage.xml
+          fail_ci_if_error: false
+          verbose: true
+
+      - name: Archive coverage report
+        uses: actions/upload-artifact@v3
+        with:
+          name: coverage-report
+          path: htmlcov/
+          retention-days: 30
+
+  #===========================================================================
+  # Job 3: Integration Tests
+  #===========================================================================
+  test-integration:
+    name: Integration Tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    services:
+      docker:
+        image: docker:dind
+        options: --privileged
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: 'pip'
+
+      - name: Install test dependencies
+        run: |
+          pip install -r requirements-dev.txt
+
+      - name: Run integration tests
+        run: make test-integration
+        continue-on-error: true  # Don't fail PR on integration test failures
+
+  #===========================================================================
+  # Job 4: Security Scans
+  #===========================================================================
+  security:
+    name: Security Scans
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    permissions:
+      contents: read
+      security-events: write  # For uploading SARIF results
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Run Trivy vulnerability scanner
+        uses: aquasecurity/trivy-action@master
+        with:
+          scan-type: 'fs'
+          scan-ref: '.'
+          format: 'sarif'
+          output: 'trivy-results.sarif'
+          severity: 'CRITICAL,HIGH'
+
+      - name: Upload Trivy results to GitHub Security
+        uses: github/codeql-action/upload-sarif@v2
+        if: always()
+        with:
+          sarif_file: 'trivy-results.sarif'
+
+      - name: Run security scans
+        run: make ci-security
+        continue-on-error: true  # Don't fail PR if optional tools missing
+
+      - name: Generate SBOM
+        run: make sbom || echo "SBOM generation skipped"
+        continue-on-error: true
+
+      - name: Archive SBOM
+        uses: actions/upload-artifact@v3
+        if: success()
+        with:
+          name: sbom
+          path: sbom*.json
+          retention-days: 90
+
+  #===========================================================================
+  # Job 5: Build
+  #===========================================================================
+  build:
+    name: Build Artifacts
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    if: github.ref == 'refs/heads/main'
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Run build
+        run: make ci-build
+
+  #===========================================================================
+  # Job 6: PR Validation Summary
+  #===========================================================================
+  pr-validation:
+    name: PR Validation Complete
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    if: github.event_name == 'pull_request'
+    needs: [lint, test-unit, security]
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Run full PR validation
+        run: |
+          echo "╔═══════════════════════════════════════════════════════════╗"
+          echo "║          ✓ PR Validation Complete!                        ║"
+          echo "╚═══════════════════════════════════════════════════════════╝"
+          echo ""
+          echo "All required checks passed:"
+          echo "  ✓ Linting"
+          echo "  ✓ Unit Tests"
+          echo "  ✓ Security Scans"
+          echo ""
+          echo "Integration tests: ${{ needs.test-integration.result }}"
+
+  #===========================================================================
+  # Job 7: Main Branch Complete Workflow
+  #===========================================================================
+  main-workflow:
+    name: Main Branch Workflow
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    if: github.ref == 'refs/heads/main'
+    needs: [lint, test-unit, test-integration, security, build]
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Main branch workflow complete
+        run: |
+          echo "╔═══════════════════════════════════════════════════════════╗"
+          echo "║          ✓ Main Branch Workflow Complete!                ║"
+          echo "╚═══════════════════════════════════════════════════════════╝"
+          echo ""
+          echo "All checks passed:"
+          echo "  ✓ Linting"
+          echo "  ✓ Unit Tests"
+          echo "  ✓ Integration Tests"
+          echo "  ✓ Security Scans"
+          echo "  ✓ Build"

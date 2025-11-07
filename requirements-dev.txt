@@ -1,0 +1,74 @@
+# =============================================================================
+# Development Dependencies - Testing & Code Quality
+# Install with: pip install -r requirements-dev.txt
+# =============================================================================
+
+# Testing Framework
+pytest==7.4.3
+pytest-cov==4.1.0
+pytest-xdist==3.5.0           # Parallel test execution
+pytest-timeout==2.2.0         # Test timeouts
+pytest-mock==3.12.0           # Mocking
+pytest-asyncio==0.23.2        # Async test support
+
+# Infrastructure Testing
+pytest-terraform==0.6.4       # Terraform testing
+pytest-ansible==4.1.1         # Ansible testing
+testinfra==9.0.0             # Infrastructure testing
+python-terraform==0.10.1      # Terraform Python wrapper
+
+# Code Quality
+flake8==7.0.0                # Python linter
+flake8-docstrings==1.7.0     # Docstring linting
+flake8-bugbear==24.1.17      # Additional checks
+black==24.1.1                # Code formatter
+isort==5.13.2                # Import sorting
+pylint==3.0.3                # Advanced linting
+mypy==1.8.0                  # Type checking
+
+# Ansible Linting
+ansible-lint==6.22.1         # Ansible playbook linting
+ansible==9.1.0               # Ansible core
+
+# YAML Validation
+yamllint==1.33.0             # YAML linting
+pyyaml==6.0.1                # YAML parsing
+
+# Security
+bandit==1.7.6                # Security issue scanner
+safety==3.0.1                # Dependency vulnerability scanner
+
+# Documentation
+sphinx==7.2.6                # Documentation generator
+sphinx-rtd-theme==2.0.0      # Read the Docs theme
+
+# HTTP Testing
+requests==2.31.0             # HTTP library
+requests-mock==1.11.0        # HTTP request mocking
+httpretty==1.1.7             # HTTP mock
+
+# Container Testing
+docker==7.0.0                # Docker SDK
+kubernetes==29.0.0           # Kubernetes SDK
+
+# Utilities
+jinja2==3.1.3                # Template rendering (Ansible uses this)
+colorama==0.4.6              # Colored terminal output
+tabulate==0.9.0              # Pretty tables
+rich==13.7.0                 # Rich terminal output
+click==8.1.7                 # CLI framework
+
+# Coverage Reporting
+coverage[toml]==7.4.0        # Coverage measurement
+coverage-badge==1.1.0        # Generate coverage badges
+
+# Performance Testing
+locust==2.20.0               # Load testing (optional)
+
+# Mock Services
+responses==0.24.1            # Mock HTTP responses
+freezegun==1.4.0             # Mock datetime
+
+# Database Testing (if needed)
+sqlalchemy==2.0.25           # SQL toolkit
+psycopg2-binary==2.9.9       # PostgreSQL adapter

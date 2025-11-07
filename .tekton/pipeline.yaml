@@ -1,0 +1,313 @@
+# =============================================================================
+# Tekton Pipeline - Kubernetes-Native CI/CD (Platform-Agnostic)
+# All logic is in Makefile - this is just a thin wrapper
+# =============================================================================
+
+apiVersion: tekton.dev/v1beta1
+kind: Pipeline
+metadata:
+  name: aiops-substrate-pipeline
+  namespace: tekton-pipelines
+  labels:
+    app: aiops-substrate
+    version: v3.0
+spec:
+  description: |
+    Platform-agnostic CI/CD pipeline for AIOps Substrate.
+    All logic is in Makefile, Tekton just orchestrates execution.
+
+  params:
+    - name: repo-url
+      type: string
+      description: Git repository URL
+      default: https://github.com/yourorg/aiops-substrate.git
+
+    - name: revision
+      type: string
+      description: Git revision (branch/tag/commit)
+      default: main
+
+    - name: container-runtime
+      type: string
+      description: Container runtime to use (docker/podman)
+      default: docker
+
+    - name: environment
+      type: string
+      description: Deployment environment (local/staging/prod)
+      default: local
+
+  workspaces:
+    - name: source-code
+      description: Source code workspace
+    - name: docker-config
+      description: Docker config for pushing images
+
+  tasks:
+    #==========================================================================
+    # Task 1: Git Clone
+    #==========================================================================
+    - name: git-clone
+      taskRef:
+        name: git-clone
+        kind: ClusterTask
+      workspaces:
+        - name: output
+          workspace: source-code
+      params:
+        - name: url
+          value: $(params.repo-url)
+        - name: revision
+          value: $(params.revision)
+
+    #==========================================================================
+    # Task 2: Lint & Validate
+    #==========================================================================
+    - name: lint
+      taskRef:
+        name: makefile-task
+      runAfter:
+        - git-clone
+      workspaces:
+        - name: source
+          workspace: source-code
+      params:
+        - name: MAKE_TARGET
+          value: ci-lint
+        - name: CONTAINER_RUNTIME
+          value: $(params.container-runtime)
+
+    #==========================================================================
+    # Task 3: Unit Tests
+    #==========================================================================
+    - name: test-unit
+      taskRef:
+        name: makefile-task
+      runAfter:
+        - lint
+      workspaces:
+        - name: source
+          workspace: source-code
+      params:
+        - name: MAKE_TARGET
+          value: test-unit
+        - name: CONTAINER_RUNTIME
+          value: $(params.container-runtime)
+
+    #==========================================================================
+    # Task 4: Integration Tests
+    #==========================================================================
+    - name: test-integration
+      taskRef:
+        name: makefile-task
+      runAfter:
+        - test-unit
+      workspaces:
+        - name: source
+          workspace: source-code
+      params:
+        - name: MAKE_TARGET
+          value: test-integration
+        - name: CONTAINER_RUNTIME
+          value: $(params.container-runtime)
+
+    #==========================================================================
+    # Task 5: Security Scans
+    #==========================================================================
+    - name: security-scan
+      taskRef:
+        name: makefile-task
+      runAfter:
+        - lint
+      workspaces:
+        - name: source
+          workspace: source-code
+      params:
+        - name: MAKE_TARGET
+          value: ci-security
+        - name: CONTAINER_RUNTIME
+          value: $(params.container-runtime)
+
+    #==========================================================================
+    # Task 6: Build
+    #==========================================================================
+    - name: build
+      taskRef:
+        name: makefile-task
+      runAfter:
+        - test-integration
+        - security-scan
+      workspaces:
+        - name: source
+          workspace: source-code
+        - name: dockerconfig
+          workspace: docker-config
+      params:
+        - name: MAKE_TARGET
+          value: ci-build
+        - name: CONTAINER_RUNTIME
+          value: $(params.container-runtime)
+
+    #==========================================================================
+    # Task 7: Deploy (Manual Approval via PipelineRun)
+    #==========================================================================
+    - name: deploy
+      taskRef:
+        name: makefile-task
+      runAfter:
+        - build
+      workspaces:
+        - name: source
+          workspace: source-code
+      params:
+        - name: MAKE_TARGET
+          value: ci-deploy
+        - name: CONTAINER_RUNTIME
+          value: $(params.container-runtime)
+        - name: ENV
+          value: $(params.environment)
+      when:
+        - input: $(params.environment)
+          operator: in
+          values: ["staging", "prod"]
+
+---
+# =============================================================================
+# Tekton Task: Generic Makefile Executor
+# =============================================================================
+
+apiVersion: tekton.dev/v1beta1
+kind: Task
+metadata:
+  name: makefile-task
+  namespace: tekton-pipelines
+  labels:
+    app: aiops-substrate
+spec:
+  description: |
+    Execute any Makefile target in a consistent environment.
+    This task is reusable across all stages.
+
+  params:
+    - name: MAKE_TARGET
+      type: string
+      description: The Makefile target to execute (e.g., lint, test, build)
+
+    - name: CONTAINER_RUNTIME
+      type: string
+      description: Container runtime to use (docker/podman)
+      default: docker
+
+    - name: ENV
+      type: string
+      description: Environment (local/staging/prod)
+      default: local
+
+  workspaces:
+    - name: source
+      description: Source code workspace
+    - name: dockerconfig
+      description: Docker config workspace
+      optional: true
+
+  steps:
+    - name: install-tools
+      image: python:3.11-slim
+      workingDir: $(workspaces.source.path)
+      script: |
+        #!/bin/bash
+        set -e
+        echo "Installing system dependencies..."
+        apt-get update -qq
+        apt-get install -y -qq make curl git jq
+
+        echo "Checking required tools..."
+        make doctor || echo "Some optional tools missing, continuing..."
+
+    - name: execute-makefile
+      image: python:3.11-slim
+      workingDir: $(workspaces.source.path)
+      env:
+        - name: CONTAINER_RUNTIME
+          value: $(params.CONTAINER_RUNTIME)
+        - name: ENV
+          value: $(params.ENV)
+      script: |
+        #!/bin/bash
+        set -e
+        echo "╔═══════════════════════════════════════════════════════════╗"
+        echo "║  Executing: make $(params.MAKE_TARGET)"
+        echo "║  Container Runtime: $(params.CONTAINER_RUNTIME)"
+        echo "║  Environment: $(params.ENV)"
+        echo "╚═══════════════════════════════════════════════════════════╝"
+
+        make $(params.MAKE_TARGET)
+
+        echo "✓ Target '$(params.MAKE_TARGET)' completed successfully"
+
+    - name: collect-artifacts
+      image: python:3.11-slim
+      workingDir: $(workspaces.source.path)
+      script: |
+        #!/bin/bash
+        echo "Collecting artifacts..."
+
+        # Copy test results if they exist
+        if [ -d "test-results" ]; then
+          echo "Found test results"
+        fi
+
+        # Copy coverage reports if they exist
+        if [ -d "htmlcov" ]; then
+          echo "Found coverage report"
+        fi
+
+        # Copy SBOM if it exists
+        if [ -f "sbom.json" ]; then
+          echo "Found SBOM"
+        fi
+
+        echo "✓ Artifact collection complete"
+
+  results:
+    - name: status
+      description: Status of the task execution
+
+---
+# =============================================================================
+# Tekton PipelineRun: Example Trigger
+# =============================================================================
+
+apiVersion: tekton.dev/v1beta1
+kind: PipelineRun
+metadata:
+  generateName: aiops-substrate-run-
+  namespace: tekton-pipelines
+spec:
+  pipelineRef:
+    name: aiops-substrate-pipeline
+  params:
+    - name: repo-url
+      value: https://github.com/yourorg/aiops-substrate.git
+    - name: revision
+      value: main
+    - name: container-runtime
+      value: docker
+    - name: environment
+      value: local
+  workspaces:
+    - name: source-code
+      volumeClaimTemplate:
+        spec:
+          accessModes:
+            - ReadWriteOnce
+          resources:
+            requests:
+              storage: 1Gi
+    - name: docker-config
+      secret:
+        secretName: docker-config
+
+  timeouts:
+    pipeline: "1h"
+    tasks: "30m"

@@ -1,0 +1,267 @@
+# =============================================================================
+# GitLab CI Pipeline - Platform-Agnostic
+# All logic is in Makefile - this is just a thin wrapper
+# =============================================================================
+
+# Global configuration
+image: python:3.11-slim
+
+# Stages
+stages:
+  - validate
+  - test
+  - security
+  - build
+  - deploy
+
+# Global variables
+variables:
+  CONTAINER_RUNTIME: docker
+  ENV: local
+
+# Default before_script - install required tools
+before_script:
+  - apt-get update -qq
+  - apt-get install -y -qq make curl git jq
+  - make doctor || echo "Some tools missing, continuing..."
+
+#==============================================================================
+# Validation Stage
+#==============================================================================
+
+lint:terraform:
+  stage: validate
+  script:
+    - make lint-terraform
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
+    - if: '$CI_COMMIT_BRANCH == "main"'
+  allow_failure: false
+
+lint:ansible:
+  stage: validate
+  script:
+    - make lint-ansible
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
+    - if: '$CI_COMMIT_BRANCH == "main"'
+  allow_failure: false
+
+lint:packer:
+  stage: validate
+  script:
+    - make lint-packer
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
+    - if: '$CI_COMMIT_BRANCH == "main"'
+  allow_failure: false
+
+lint:python:
+  stage: validate
+  script:
+    - make lint-python
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
+    - if: '$CI_COMMIT_BRANCH == "main"'
+  allow_failure: true  # Optional
+
+lint:all:
+  stage: validate
+  script:
+    - make ci-lint
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
+    - if: '$CI_COMMIT_BRANCH == "main"'
+  allow_failure: false
+
+#==============================================================================
+# Test Stage
+#==============================================================================
+
+test:unit:
+  stage: test
+  script:
+    - make test-unit
+  coverage: '/TOTAL.*\s+(\d+%)$/'
+  artifacts:
+    reports:
+      coverage_report:
+        coverage_format: cobertura
+        path: coverage.xml
+    paths:
+      - htmlcov/
+    expire_in: 30 days
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
+    - if: '$CI_COMMIT_BRANCH == "main"'
+  allow_failure: false
+
+test:integration:
+  stage: test
+  services:
+    - docker:dind
+  script:
+    - make test-integration
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
+    - if: '$CI_COMMIT_BRANCH == "main"'
+  allow_failure: false
+
+test:e2e:
+  stage: test
+  script:
+    - make test-e2e
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
+    - if: '$CI_COMMIT_BRANCH == "main"'
+  allow_failure: true  # E2E tests might require full infrastructure
+
+test:all:
+  stage: test
+  script:
+    - make ci-test
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
+    - if: '$CI_COMMIT_BRANCH == "main"'
+  allow_failure: false
+
+#==============================================================================
+# Security Stage
+#==============================================================================
+
+security:trivy:
+  stage: security
+  script:
+    - make security-trivy
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
+    - if: '$CI_COMMIT_BRANCH == "main"'
+  allow_failure: true  # Tool might not be installed
+
+security:secrets:
+  stage: security
+  script:
+    - make security-secrets
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
+    - if: '$CI_COMMIT_BRANCH == "main"'
+  allow_failure: false
+
+security:terraform:
+  stage: security
+  script:
+    - make security-terraform
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
+    - if: '$CI_COMMIT_BRANCH == "main"'
+  allow_failure: true  # Tool might not be installed
+
+security:all:
+  stage: security
+  script:
+    - make ci-security
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
+    - if: '$CI_COMMIT_BRANCH == "main"'
+  allow_failure: false
+
+#==============================================================================
+# Build Stage
+#==============================================================================
+
+build:packer:
+  stage: build
+  script:
+    - make packer-validate
+  rules:
+    - if: '$CI_COMMIT_BRANCH == "main"'
+  allow_failure: false
+
+build:autoscaler:
+  stage: build
+  services:
+    - docker:dind
+  script:
+    - make autoscaler-build
+  rules:
+    - if: '$CI_COMMIT_BRANCH == "main"'
+  allow_failure: false
+
+build:all:
+  stage: build
+  script:
+    - make ci-build
+  rules:
+    - if: '$CI_COMMIT_BRANCH == "main"'
+  allow_failure: false
+
+#==============================================================================
+# Deploy Stage (Manual Approval for Production)
+#==============================================================================
+
+deploy:staging:
+  stage: deploy
+  script:
+    - echo "Deploy to staging - implement based on your strategy"
+    - make ci-deploy
+  environment:
+    name: staging
+    url: https://staging.aiops.example.com
+  rules:
+    - if: '$CI_COMMIT_BRANCH == "main"'
+  when: manual
+  allow_failure: false
+
+deploy:production:
+  stage: deploy
+  script:
+    - echo "Deploy to production"
+    - ENV=prod make apply-prod
+  environment:
+    name: production
+    url: https://prod.aiops.example.com
+  rules:
+    - if: '$CI_COMMIT_BRANCH == "main"'
+  when: manual
+  allow_failure: false
+
+#==============================================================================
+# Pull Request Validation (Complete)
+#==============================================================================
+
+mr:validation:
+  stage: validate
+  script:
+    - make ci-pr
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
+  allow_failure: false
+
+#==============================================================================
+# Main Branch Complete Workflow
+#==============================================================================
+
+main:complete:
+  stage: deploy
+  script:
+    - make ci-main
+  rules:
+    - if: '$CI_COMMIT_BRANCH == "main"'
+  allow_failure: false
+
+#==============================================================================
+# SBOM Generation
+#==============================================================================
+
+sbom:generate:
+  stage: security
+  script:
+    - make sbom
+  artifacts:
+    paths:
+      - sbom.json
+      - sbom.spdx.json
+    expire_in: 90 days
+  rules:
+    - if: '$CI_COMMIT_BRANCH == "main"'
+  allow_failure: true

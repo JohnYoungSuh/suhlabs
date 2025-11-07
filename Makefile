@@ -73,8 +73,9 @@ help:
 	@echo "${GREEN}Local Dev (Docker Desktop + WSL2):${RESET}"
 	@echo "  dev-up           Start full local stack (Vault, Ollama, MinIO, k3s)"
 	@echo "  dev-down         Stop and clean local stack"
-	@echo "  kind-up          Create kind cluster (aiops-dev)"
+	@echo "  kind-up          Create kind cluster (aiops-dev) with detailed logging"
 	@echo "  kind-down        Delete kind cluster"
+	@echo "  kind-debug       Show detailed debug info for troubleshooting"
 	@echo "  apply-local      Apply Terraform (local kind)"
 	@echo "  test-ai          Test AI agent with NL request"
 	@echo ""
@@ -155,10 +156,71 @@ ollama-pull:
 # Kubernetes: kind (local)
 # -----------------------------------------------------------------------------
 kind-up:
-	@echo "${GREEN}Creating kind cluster: aiops-dev${RESET}"
-	$(KIND) create cluster --name aiops-dev --config bootstrap/kind-cluster.yaml --wait 2m
-	$(KUBECTL) cluster-info
-	@echo "Kubeconfig exported to ~/.kube/config"
+	@echo "${GREEN}╔════════════════════════════════════════════════════════════╗${RESET}"
+	@echo "${GREEN}║          Creating kind cluster: aiops-dev                 ║${RESET}"
+	@echo "${GREEN}╚════════════════════════════════════════════════════════════╝${RESET}"
+	@echo ""
+	@echo "${YELLOW}[Step 1/6] Pre-flight checks...${RESET}"
+	@echo "  → Checking if kind is installed..."
+	@which $(KIND) || (echo "${RED}ERROR: kind not found. Run 'make setup-tools'${RESET}" && exit 1)
+	@echo "  → Checking if kubectl is installed..."
+	@which $(KUBECTL) || (echo "${RED}ERROR: kubectl not found. Run 'make setup-tools'${RESET}" && exit 1)
+	@echo "  → Checking if Docker is running..."
+	@docker ps > /dev/null 2>&1 || (echo "${RED}ERROR: Docker is not running. Start Docker Desktop.${RESET}" && exit 1)
+	@echo "  ${GREEN}✓ All checks passed${RESET}"
+	@echo ""
+	@echo "${YELLOW}[Step 2/6] Checking for existing clusters...${RESET}"
+	@if $(KIND) get clusters 2>/dev/null | grep -q "^aiops-dev$$"; then \
+		echo "  ${YELLOW}⚠ Cluster 'aiops-dev' already exists${RESET}"; \
+		echo "  → Listing existing clusters:"; \
+		$(KIND) get clusters; \
+		echo ""; \
+		echo "  ${YELLOW}Cleaning up existing cluster...${RESET}"; \
+		$(KIND) delete cluster --name aiops-dev; \
+		echo "  ${GREEN}✓ Old cluster removed${RESET}"; \
+	else \
+		echo "  ${GREEN}✓ No existing cluster found${RESET}"; \
+	fi
+	@echo ""
+	@echo "${YELLOW}[Step 3/6] Validating cluster configuration...${RESET}"
+	@if [ ! -f bootstrap/kind-cluster.yaml ]; then \
+		echo "  ${RED}ERROR: bootstrap/kind-cluster.yaml not found${RESET}"; \
+		exit 1; \
+	fi
+	@echo "  → Configuration file: bootstrap/kind-cluster.yaml"
+	@echo "  ${GREEN}✓ Configuration valid${RESET}"
+	@echo ""
+	@echo "${YELLOW}[Step 4/6] Creating cluster (this may take 2-3 minutes)...${RESET}"
+	@echo "  → Running: kind create cluster --name aiops-dev --config bootstrap/kind-cluster.yaml --wait 2m"
+	@$(KIND) create cluster --name aiops-dev --config bootstrap/kind-cluster.yaml --wait 2m --verbosity=1 || \
+		(echo "${RED}ERROR: Cluster creation failed. See logs above.${RESET}" && exit 1)
+	@echo "  ${GREEN}✓ Cluster created successfully${RESET}"
+	@echo ""
+	@echo "${YELLOW}[Step 5/6] Verifying cluster connectivity...${RESET}"
+	@echo "  → Waiting 5 seconds for cluster to stabilize..."
+	@sleep 5
+	@echo "  → Testing connection..."
+	@$(KUBECTL) cluster-info --context kind-aiops-dev || \
+		(echo "${RED}ERROR: Cannot connect to cluster${RESET}" && \
+		 echo "Debug info:" && \
+		 $(KUBECTL) config get-contexts && \
+		 exit 1)
+	@echo "  ${GREEN}✓ Cluster is accessible${RESET}"
+	@echo ""
+	@echo "${YELLOW}[Step 6/6] Verifying nodes...${RESET}"
+	@$(KUBECTL) get nodes --context kind-aiops-dev
+	@echo ""
+	@echo "${GREEN}╔════════════════════════════════════════════════════════════╗${RESET}"
+	@echo "${GREEN}║              ✓ Cluster Ready!                              ║${RESET}"
+	@echo "${GREEN}╚════════════════════════════════════════════════════════════╝${RESET}"
+	@echo ""
+	@echo "Kubeconfig: ${YELLOW}~/.kube/config${RESET} (context: kind-aiops-dev)"
+	@echo "Nodes: 3 (1 control-plane + 2 workers)"
+	@echo ""
+	@echo "Next steps:"
+	@echo "  1. kubectl get nodes"
+	@echo "  2. kubectl get pods -A"
+	@echo "  3. make dev-up  # Start Vault, Ollama, MinIO"
 
 kind-down:
 	@echo "${GREEN}Deleting kind cluster...${RESET}"
@@ -166,6 +228,69 @@ kind-down:
 
 kind-export:
 	$(KIND) export kubeconfig --name aiops-dev
+
+kind-debug:
+	@echo "${YELLOW}╔════════════════════════════════════════════════════════════╗${RESET}"
+	@echo "${YELLOW}║           kind Cluster Debug Information                  ║${RESET}"
+	@echo "${YELLOW}╚════════════════════════════════════════════════════════════╝${RESET}"
+	@echo ""
+	@echo "${GREEN}[1] System Information:${RESET}"
+	@echo "  OS: $(shell uname -a)"
+	@echo "  WSL: $(shell grep -i microsoft /proc/version 2>/dev/null || echo 'Not WSL')"
+	@echo ""
+	@echo "${GREEN}[2] Tool Versions:${RESET}"
+	@echo "  kind: $(shell $(KIND) version 2>/dev/null || echo 'NOT INSTALLED')"
+	@echo "  kubectl: $(shell $(KUBECTL) version --client --short 2>/dev/null || echo 'NOT INSTALLED')"
+	@echo "  docker: $(shell docker version --format '{{.Server.Version}}' 2>/dev/null || echo 'NOT RUNNING')"
+	@echo ""
+	@echo "${GREEN}[3] Docker Status:${RESET}"
+	@docker ps --format "table {{.Names}}\t{{.Status}}\t{{.Ports}}" 2>/dev/null || echo "  ERROR: Docker not accessible"
+	@echo ""
+	@echo "${GREEN}[4] Existing kind Clusters:${RESET}"
+	@$(KIND) get clusters 2>/dev/null || echo "  No clusters found"
+	@echo ""
+	@echo "${GREEN}[5] kind Cluster Details (if exists):${RESET}"
+	@if $(KIND) get clusters 2>/dev/null | grep -q "aiops-dev"; then \
+		echo "  Cluster 'aiops-dev' exists"; \
+		echo ""; \
+		echo "  Container status:"; \
+		docker ps -a --filter "name=aiops-dev" --format "table {{.Names}}\t{{.Status}}\t{{.Ports}}"; \
+		echo ""; \
+		echo "  Container logs (last 20 lines):"; \
+		docker logs --tail 20 aiops-dev-control-plane 2>/dev/null || echo "  Cannot access logs"; \
+	else \
+		echo "  Cluster 'aiops-dev' does not exist"; \
+	fi
+	@echo ""
+	@echo "${GREEN}[6] kubectl Configuration:${RESET}"
+	@echo "  Kubeconfig: $$KUBECONFIG"
+	@echo "  Kubeconfig file: ~/.kube/config"
+	@if [ -f ~/.kube/config ]; then \
+		echo "  Current context: $$($(KUBECTL) config current-context 2>/dev/null || echo 'NONE')"; \
+		echo ""; \
+		echo "  Available contexts:"; \
+		$(KUBECTL) config get-contexts 2>/dev/null || echo "  Cannot read kubeconfig"; \
+	else \
+		echo "  ~/.kube/config does not exist"; \
+	fi
+	@echo ""
+	@echo "${GREEN}[7] Network Information:${RESET}"
+	@echo "  Docker networks:"
+	@docker network ls --filter "name=kind" 2>/dev/null || echo "  Cannot access Docker networks"
+	@echo ""
+	@echo "${GREEN}[8] Certificate Information (if cluster exists):${RESET}"
+	@if $(KIND) get clusters 2>/dev/null | grep -q "aiops-dev"; then \
+		echo "  Extracting certificate details..."; \
+		$(KUBECTL) config view --raw --minify --context kind-aiops-dev -o jsonpath='{.clusters[0].cluster.server}' 2>/dev/null | xargs -I {} echo "  Server: {}"; \
+		echo "  Certificate check:"; \
+		$(KUBECTL) cluster-info --context kind-aiops-dev 2>&1 | head -10 || true; \
+	else \
+		echo "  No cluster to inspect"; \
+	fi
+	@echo ""
+	@echo "${YELLOW}╔════════════════════════════════════════════════════════════╗${RESET}"
+	@echo "${YELLOW}║                    Debug Complete                         ║${RESET}"
+	@echo "${YELLOW}╚════════════════════════════════════════════════════════════╝${RESET}"
 
 # -----------------------------------------------------------------------------
 # Terraform: Dual Backend Support

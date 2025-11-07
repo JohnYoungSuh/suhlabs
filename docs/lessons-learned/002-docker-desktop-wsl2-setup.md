@@ -89,16 +89,54 @@ Download from: https://www.docker.com/products/docker-desktop
 - Accept default settings
 - Restart if prompted
 
-#### 2. Enable WSL2 Integration
+#### 2. Set Default WSL Distro (CRITICAL!)
+
+**This step is often missed and causes Docker Desktop integration to fail.**
+
+Open PowerShell (Windows) and set your default WSL distro:
+
+```powershell
+# List all WSL distros
+wsl --list --verbose
+
+# Example output:
+#   NAME            STATE           VERSION
+# * Ubuntu-22.04    Running         2
+#   docker-desktop  Running         2
+#   Ubuntu          Stopped         2
+
+# Set your distro as default (if not already marked with *)
+wsl --set-default Ubuntu-22.04
+
+# Verify it's set (should show * next to your distro)
+wsl --list --verbose
+```
+
+**Why This Matters**:
+- Docker Desktop looks for the **default WSL distro** for integration
+- If no default is set, or wrong distro is default, integration fails
+- WSL2 integration toggle may be grayed out without this
+- `docker` commands won't work in WSL2 without proper default
+
+**Common Issue**:
+```
+Docker Desktop → WSL Integration → Distro not showing
+```
+
+**Fix**: Set distro as default with `wsl --set-default <distro>`
+
+#### 3. Enable WSL2 Integration
 
 Open Docker Desktop:
 
 1. Click **Settings** (gear icon, top right)
 2. Go to **Resources → WSL Integration**
 3. Enable:
-   - ✅ **"Enable integration with my default WSL distro"**
+   - ✅ **"Enable integration with my default WSL distro"** (must be set in step 2!)
    - ✅ **Your specific distro** (Ubuntu, Ubuntu-22.04, etc.)
 4. Click **"Apply & Restart"**
+
+**Note**: If your distro doesn't appear in the list, go back to Step 2 and set it as default.
 
 **Screenshot of setting location**:
 ```
@@ -159,6 +197,12 @@ wsl --shutdown
 After setup, verify:
 
 ```bash
+# ✅ 0. WSL distro is set as default (in PowerShell/Windows)
+wsl --list --verbose
+# Should show * next to your distro:
+#   NAME            STATE           VERSION
+# * Ubuntu-22.04    Running         2
+
 # ✅ 1. Docker command available
 which docker
 # Should show: /usr/bin/docker or /usr/local/bin/docker
@@ -209,7 +253,22 @@ docker run --rm alpine echo "Hello WSL2"
 
 ### Issue 3: WSL2 distro not showing in integration list
 
-**Cause**: Distro not properly registered with WSL2
+**Cause**: Distro not set as default in WSL2
+
+**Fix (MOST COMMON)**:
+```powershell
+# In PowerShell (Windows)
+# List distros and check which has the * (default)
+wsl --list --verbose
+
+# Set your distro as default
+wsl --set-default Ubuntu-22.04
+
+# Restart Docker Desktop
+# Then check: Docker Desktop → Settings → Resources → WSL Integration
+```
+
+**Alternative Cause**: Distro not properly registered with WSL2
 
 **Fix**:
 ```powershell
@@ -218,7 +277,10 @@ wsl --list --verbose
 # Check your distro shows VERSION 2
 
 # If VERSION 1, upgrade to WSL2:
-wsl --set-version Ubuntu 2
+wsl --set-version Ubuntu-22.04 2
+
+# Then set as default:
+wsl --set-default Ubuntu-22.04
 ```
 
 ### Issue 4: Have both Docker Desktop and Docker in WSL2
@@ -296,17 +358,21 @@ docker compose up
 
 When setting up a new machine:
 
-```bash
+```powershell
 # 1. Verify Docker Desktop is installed (Windows)
 # Check: System tray should show Docker whale icon
 
-# 2. Enable WSL2 integration
+# 2. Set WSL distro as default (in PowerShell)
+wsl --set-default Ubuntu-22.04
+wsl --list --verbose  # Verify * next to your distro
+
+# 3. Enable WSL2 integration
 # Docker Desktop → Settings → Resources → WSL Integration
 
-# 3. Test in WSL2
+# 4. Test in WSL2 (now in WSL terminal)
 docker run hello-world
 
-# 4. Test docker-compose (V2)
+# 5. Test docker-compose (V2)
 docker compose version
 ```
 
@@ -323,6 +389,8 @@ docker compose version
 Add to onboarding checklist:
 
 - [ ] Install Docker Desktop on Windows (not in WSL2)
+- [ ] **Set WSL distro as default**: `wsl --set-default <distro>` (in PowerShell)
+- [ ] Verify default is set: `wsl --list --verbose` (should show * next to distro)
 - [ ] Enable WSL2 integration in Docker Desktop
 - [ ] Verify `docker info` shows "Docker Desktop"
 - [ ] Verify `docker compose version` shows V2

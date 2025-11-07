@@ -1,0 +1,57 @@
+{
+  "version": "0.2",
+  "language": "en",
+  "dictionaries": [
+    "typescript",
+    "node",
+    "softwareTerms"
+  ],
+  "ignorePaths": [
+    "node_modules",
+    "dist",
+    "build",
+    "**/Makefile",
+    "**/*.lock",
+    "**/.git",
+    "**/.env",
+    "**/.DS_Store"
+  ],
+  "ignoreRegExpList": [
+    "/\\$\\(.*?\\)/", // Makefile variables
+    "/^\\s*\\w+:\\s*$/", // Makefile targets
+    "/^\\s*@?\\w+.*$/", // Shell commands
+    "/\\s*#.*$/", // Comments (optional)
+    "/\\s*echo\\s+.*$/", // Echo statements
+    "/\\b[A-Z_]{2,}\\b/" // ALL_CAPS constants
+  ],
+  "words": [
+    "Makefile",
+    "devcontainer",
+    "idempotent",
+    "onboarding",
+    "yaml",
+    "CI",
+    "CLI",
+    "regex",
+    "xargs",
+    "kubectl",
+    "terraform",
+    "ansible",
+    "splunk",
+    "eMASS",
+    "Suhlabs"
+  ],
+  "enableFiletypes": [
+    "md",
+    "ts",
+    "js",
+    "json",
+    "yml",
+    "yaml",
+    "sh",
+    "py",
+    "go"
+  ],
+  "import": [],
+  "useGitignore": true
+}

@@ -1,0 +1,420 @@
+{
+  "folders": [
+    {
+      "name": "🏠 Root",
+      "path": "."
+    },
+    {
+      "name": "📦 Packer (VM Templates)",
+      "path": "./packer"
+    },
+    {
+      "name": "🏗️ Terraform (Infrastructure)",
+      "path": "./infra"
+    },
+    {
+      "name": "🤖 Ansible (Automation)",
+      "path": "./ansible"
+    },
+    {
+      "name": "☸️ Kubernetes (Cluster)",
+      "path": "./cluster"
+    },
+    {
+      "name": "📚 Documentation",
+      "path": "./docs"
+    },
+    {
+      "name": "🚀 Bootstrap (Local Dev)",
+      "path": "./bootstrap"
+    }
+  ],
+  "settings": {
+    // Terminal
+    "terminal.integrated.defaultProfile.linux": "bash",
+    "terminal.integrated.defaultProfile.windows": "WSL",
+    "terminal.integrated.profiles.windows": {
+      "WSL": {
+        "path": "wsl.exe",
+        "args": ["-d", "Ubuntu-22.04"]
+      }
+    },
+
+    // Files
+    "files.exclude": {
+      "**/.git": false,
+      "**/.terraform": true,
+      "**/*.tfstate*": true,
+      "**/__pycache__": true,
+      "**/*.pyc": true,
+      "**/node_modules": true
+    },
+    "files.watcherExclude": {
+      "**/.git/objects/**": true,
+      "**/.terraform/**": true,
+      "**/node_modules/**": true
+    },
+    "search.exclude": {
+      "**/.terraform": true,
+      "**/*.tfstate*": true,
+      "**/node_modules": true
+    },
+
+    // Terraform
+    "terraform.languageServer": {
+      "enabled": true,
+      "args": []
+    },
+    "terraform.experimentalFeatures": {
+      "validateOnSave": true,
+      "prefillRequiredFields": true
+    },
+    "[terraform]": {
+      "editor.defaultFormatter": "hashicorp.terraform",
+      "editor.formatOnSave": true,
+      "editor.formatOnSaveMode": "file"
+    },
+    "[terraform-vars]": {
+      "editor.defaultFormatter": "hashicorp.terraform",
+      "editor.formatOnSave": true
+    },
+
+    // HCL (Packer)
+    "[hcl]": {
+      "editor.defaultFormatter": "hashicorp.hcl",
+      "editor.formatOnSave": true
+    },
+
+    // Ansible
+    "ansible.python.interpreterPath": "/usr/bin/python3",
+    "ansible.validation.enabled": true,
+    "ansible.validation.lint.enabled": true,
+    "[ansible]": {
+      "editor.defaultFormatter": "redhat.ansible",
+      "editor.formatOnSave": false,
+      "editor.tabSize": 2
+    },
+    "[yaml]": {
+      "editor.defaultFormatter": "redhat.vscode-yaml",
+      "editor.formatOnSave": true,
+      "editor.tabSize": 2,
+      "editor.insertSpaces": true
+    },
+
+    // Python
+    "python.defaultInterpreterPath": "/usr/bin/python3",
+    "python.linting.enabled": true,
+    "python.linting.pylintEnabled": false,
+    "python.linting.flake8Enabled": true,
+    "python.formatting.provider": "black",
+    "[python]": {
+      "editor.defaultFormatter": "ms-python.black-formatter",
+      "editor.formatOnSave": true,
+      "editor.tabSize": 4
+    },
+
+    // Markdown
+    "[markdown]": {
+      "editor.formatOnSave": true,
+      "editor.wordWrap": "on",
+      "editor.quickSuggestions": {
+        "comments": "off",
+        "strings": "off",
+        "other": "off"
+      }
+    },
+
+    // JSON
+    "[json]": {
+      "editor.defaultFormatter": "vscode.json-language-features",
+      "editor.formatOnSave": true
+    },
+    "[jsonc]": {
+      "editor.defaultFormatter": "vscode.json-language-features",
+      "editor.formatOnSave": true
+    },
+
+    // Kubernetes
+    "vs-kubernetes": {
+      "vs-kubernetes.crd-code-completion": "enabled",
+      "vs-kubernetes.helm-path.linux": "/usr/local/bin/helm",
+      "vs-kubernetes.kubectl-path.linux": "/usr/local/bin/kubectl"
+    },
+
+    // Git
+    "git.autofetch": true,
+    "git.confirmSync": false,
+    "git.enableSmartCommit": true,
+    "gitlens.hovers.currentLine.over": "line",
+    "gitlens.currentLine.enabled": true,
+
+    // Editor
+    "editor.formatOnSave": true,
+    "editor.formatOnPaste": false,
+    "editor.tabSize": 2,
+    "editor.rulers": [80, 120],
+    "editor.renderWhitespace": "boundary",
+    "editor.minimap.enabled": true,
+    "editor.suggestSelection": "first",
+    "editor.bracketPairColorization.enabled": true,
+
+    // Workbench
+    "workbench.colorTheme": "Default Dark+",
+    "workbench.iconTheme": "vscode-icons",
+    "workbench.editor.enablePreview": false,
+
+    // Code Spell Checker
+    "cSpell.words": [
+      "aiops",
+      "ansible",
+      "centos",
+      "freeipa",
+      "haproxy",
+      "homelab",
+      "kubectl",
+      "kubernetes",
+      "kubeconfig",
+      "ollama",
+      "packer",
+      "proxmox",
+      "suhlabs",
+      "terraform",
+      "tfvars",
+      "vmbr"
+    ]
+  },
+  "extensions": {
+    "recommendations": [
+      // Infrastructure as Code
+      "hashicorp.terraform",
+      "hashicorp.hcl",
+
+      // Ansible
+      "redhat.ansible",
+      "redhat.vscode-yaml",
+
+      // Kubernetes
+      "ms-kubernetes-tools.vscode-kubernetes-tools",
+      "redhat.vscode-kubernetes",
+
+      // Python
+      "ms-python.python",
+      "ms-python.vscode-pylance",
+      "ms-python.black-formatter",
+
+      // Docker
+      "ms-azuretools.vscode-docker",
+
+      // Git
+      "eamodio.gitlens",
+      "github.vscode-pull-request-github",
+
+      // Markdown
+      "yzhang.markdown-all-in-one",
+      "davidanson.vscode-markdownlint",
+
+      // Utilities
+      "editorconfig.editorconfig",
+      "streetsidesoftware.code-spell-checker",
+      "bierner.markdown-mermaid",
+
+      // YAML
+      "redhat.vscode-yaml",
+
+      // Makefile
+      "ms-vscode.makefile-tools",
+
+      // Shell
+      "timonwong.shellcheck",
+      "foxundermoon.shell-format",
+
+      // Icons
+      "vscode-icons-team.vscode-icons"
+    ]
+  },
+  "tasks": {
+    "version": "2.0.0",
+    "tasks": [
+      {
+        "label": "Setup: Install Dev Tools",
+        "type": "shell",
+        "command": "make setup-tools",
+        "group": "build",
+        "presentation": {
+          "reveal": "always",
+          "panel": "new"
+        }
+      },
+      {
+        "label": "Local: Start Services (dev-up)",
+        "type": "shell",
+        "command": "make dev-up",
+        "group": "build",
+        "presentation": {
+          "reveal": "always",
+          "panel": "new"
+        }
+      },
+      {
+        "label": "Local: Create kind Cluster",
+        "type": "shell",
+        "command": "make kind-up",
+        "group": "build",
+        "presentation": {
+          "reveal": "always",
+          "panel": "new"
+        }
+      },
+      {
+        "label": "Local: Stop Services (dev-down)",
+        "type": "shell",
+        "command": "make dev-down",
+        "group": "build",
+        "presentation": {
+          "reveal": "always",
+          "panel": "new"
+        }
+      },
+      {
+        "label": "Packer: Validate Template",
+        "type": "shell",
+        "command": "make packer-validate",
+        "group": "test",
+        "presentation": {
+          "reveal": "always",
+          "panel": "shared"
+        }
+      },
+      {
+        "label": "Packer: Build Template",
+        "type": "shell",
+        "command": "make packer-build",
+        "group": "build",
+        "presentation": {
+          "reveal": "always",
+          "panel": "new"
+        }
+      },
+      {
+        "label": "Terraform: Init (prod)",
+        "type": "shell",
+        "command": "make init-prod",
+        "group": "build",
+        "presentation": {
+          "reveal": "always",
+          "panel": "shared"
+        }
+      },
+      {
+        "label": "Terraform: Plan (prod)",
+        "type": "shell",
+        "command": "make plan-prod",
+        "group": "test",
+        "presentation": {
+          "reveal": "always",
+          "panel": "shared"
+        }
+      },
+      {
+        "label": "Terraform: Apply (prod)",
+        "type": "shell",
+        "command": "make apply-prod",
+        "group": "build",
+        "presentation": {
+          "reveal": "always",
+          "panel": "new"
+        }
+      },
+      {
+        "label": "Ansible: Test Connectivity",
+        "type": "shell",
+        "command": "make ansible-ping",
+        "group": "test",
+        "presentation": {
+          "reveal": "always",
+          "panel": "shared"
+        }
+      },
+      {
+        "label": "Ansible: Deploy k3s",
+        "type": "shell",
+        "command": "make ansible-deploy-k3s",
+        "group": "build",
+        "presentation": {
+          "reveal": "always",
+          "panel": "new"
+        }
+      },
+      {
+        "label": "Ansible: Deploy Apps",
+        "type": "shell",
+        "command": "make ansible-deploy-apps",
+        "group": "build",
+        "presentation": {
+          "reveal": "always",
+          "panel": "new"
+        }
+      },
+      {
+        "label": "kubectl: Get Nodes",
+        "type": "shell",
+        "command": "kubectl get nodes",
+        "group": "test",
+        "presentation": {
+          "reveal": "always",
+          "panel": "shared"
+        }
+      },
+      {
+        "label": "kubectl: Get Pods (All)",
+        "type": "shell",
+        "command": "kubectl get pods -A",
+        "group": "test",
+        "presentation": {
+          "reveal": "always",
+          "panel": "shared"
+        }
+      },
+      {
+        "label": "Docker: Show Containers",
+        "type": "shell",
+        "command": "docker ps",
+        "group": "test",
+        "presentation": {
+          "reveal": "always",
+          "panel": "shared"
+        }
+      },
+      {
+        "label": "Help: Show Makefile Targets",
+        "type": "shell",
+        "command": "make help",
+        "group": "none",
+        "presentation": {
+          "reveal": "always",
+          "panel": "shared"
+        }
+      }
+    ]
+  },
+  "launch": {
+    "version": "0.2.0",
+    "configurations": [
+      {
+        "name": "Python: Current File",
+        "type": "python",
+        "request": "launch",
+        "program": "${file}",
+        "console": "integratedTerminal",
+        "justMyCode": true
+      },
+      {
+        "name": "Attach to Kind Cluster",
+        "type": "cloudcode.kubernetes",
+        "request": "launch",
+        "name": "Run on Kubernetes",
+        "kubernetesContext": "kind-aiops-dev"
+      }
+    ]
+  }
+}

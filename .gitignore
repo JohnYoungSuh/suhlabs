@@ -15,7 +15,8 @@ bootstrap/*.log
 
 # VS Code
 .vscode/*.code-workspace
-*.code-workspace
+# Allow root workspace file
+# *.code-workspace
 
 # General
 __pycache__/

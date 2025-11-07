@@ -1,0 +1,67 @@
+kind: Cluster
+apiVersion: kind.x-k8s.io/v1alpha4
+name: aiops-dev
+
+# Multi-node cluster for testing HA configurations
+nodes:
+  # Control plane node
+  - role: control-plane
+    kubeadmConfigPatches:
+      - |
+        kind: InitConfiguration
+        nodeRegistration:
+          kubeletExtraArgs:
+            node-labels: "role=control-plane"
+    extraPortMappings:
+      # AI Ops Agent API
+      - containerPort: 30080
+        hostPort: 30080
+        protocol: TCP
+      # Kubernetes API
+      - containerPort: 6443
+        hostPort: 6443
+        protocol: TCP
+      # Ingress HTTP
+      - containerPort: 30000
+        hostPort: 80
+        protocol: TCP
+      # Ingress HTTPS
+      - containerPort: 30001
+        hostPort: 443
+        protocol: TCP
+
+  # Worker node 1
+  - role: worker
+    kubeadmConfigPatches:
+      - |
+        kind: JoinConfiguration
+        nodeRegistration:
+          kubeletExtraArgs:
+            node-labels: "role=worker,workload=general"
+
+  # Worker node 2
+  - role: worker
+    kubeadmConfigPatches:
+      - |
+        kind: JoinConfiguration
+        nodeRegistration:
+          kubeletExtraArgs:
+            node-labels: "role=worker,workload=general"
+
+# Networking configuration
+networking:
+  # Allow pods to communicate with services on the host
+  disableDefaultCNI: false
+  podSubnet: 10.244.0.0/16
+  serviceSubnet: 10.96.0.0/12
+
+# Feature gates for testing advanced k8s features
+featureGates:
+  # Enable for testing
+  GracefulNodeShutdown: true
+
+# Container runtime configuration
+containerdConfigPatches:
+  - |-
+    [plugins."io.containerd.grpc.v1.cri".registry.mirrors."localhost:5001"]
+      endpoint = ["http://localhost:5001"]

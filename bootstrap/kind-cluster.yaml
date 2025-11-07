@@ -50,6 +50,10 @@ nodes:
 
 # Networking configuration
 networking:
+  # Explicitly set API server address for WSL2 compatibility
+  # This prevents 0.0.0.0 address in kubeconfig (causes cert errors)
+  apiServerAddress: "127.0.0.1"
+  apiServerPort: 6443
   # Allow pods to communicate with services on the host
   disableDefaultCNI: false
   podSubnet: 10.244.0.0/16

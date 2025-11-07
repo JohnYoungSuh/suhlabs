@@ -11,20 +11,44 @@ packer {
 }
 
 # Variables
+# Set these via environment variables:
+#   export PM_API_URL="https://proxmox.example.com:8006/api2/json"
+#   export PM_API_TOKEN_ID="terraform@pam!terraform"
+#   export PM_API_TOKEN_SECRET="your-secret-token"
+# Or pass via command line: packer build -var proxmox_url=...
+
 variable "proxmox_url" {
-  type    = string
-  default = "${env("PM_API_URL")}"
+  type        = string
+  default     = env("PM_API_URL")
+  description = "Proxmox API URL (e.g., https://proxmox.example.com:8006/api2/json)"
+
+  validation {
+    condition     = can(regex("^https?://", var.proxmox_url))
+    error_message = "The proxmox_url must be a valid URL starting with http:// or https://. Set PM_API_URL environment variable."
+  }
 }
 
 variable "proxmox_token_id" {
-  type    = string
-  default = "${env("PM_API_TOKEN_ID")}"
+  type        = string
+  default     = env("PM_API_TOKEN_ID")
+  description = "Proxmox API Token ID (e.g., terraform@pam!terraform)"
+
+  validation {
+    condition     = length(var.proxmox_token_id) > 0
+    error_message = "The proxmox_token_id must not be empty. Set PM_API_TOKEN_ID environment variable."
+  }
 }
 
 variable "proxmox_token_secret" {
-  type      = string
-  sensitive = true
-  default   = "${env("PM_API_TOKEN_SECRET")}"
+  type        = string
+  sensitive   = true
+  default     = env("PM_API_TOKEN_SECRET")
+  description = "Proxmox API Token Secret"
+
+  validation {
+    condition     = length(var.proxmox_token_secret) > 0
+    error_message = "The proxmox_token_secret must not be empty. Set PM_API_TOKEN_SECRET environment variable."
+  }
 }
 
 variable "proxmox_node" {
@@ -54,12 +78,12 @@ variable "template_description" {
 
 variable "centos_iso_url" {
   type    = string
-  default = "https://mirrors.centos.org/mirrorlist?path=/9-stream/BaseOS/x86_64/iso/CentOS-Stream-9-latest-x86_64-dvd1.iso&redirect=1&protocol=https"
+  default = "https://mirror.stream.centos.org/9-stream/BaseOS/x86_64/iso/CentOS-Stream-9-latest-x86_64-dvd1.iso"
 }
 
 variable "centos_iso_checksum" {
   type    = string
-  default = "file:https://mirrors.centos.org/mirrorlist?path=/9-stream/BaseOS/x86_64/iso/CentOS-Stream-9-latest-x86_64-dvd1.iso.SHA256SUM&redirect=1&protocol=https"
+  default = "sha256:https://mirror.stream.centos.org/9-stream/BaseOS/x86_64/iso/CentOS-Stream-9-latest-x86_64-dvd1.iso.SHA256SUM"
 }
 
 variable "vm_cpu_cores" {
@@ -101,11 +125,14 @@ source "proxmox-iso" "centos9" {
   template_name        = var.template_name
   template_description = var.template_description
 
-  # ISO settings
-  iso_url          = var.centos_iso_url
-  iso_checksum     = var.centos_iso_checksum
-  iso_storage_pool = var.iso_storage_pool
-  unmount_iso      = true
+  # ISO settings (boot_iso block replaces deprecated iso_* parameters)
+  boot_iso {
+    type             = "scsi"
+    iso_url          = var.centos_iso_url
+    iso_checksum     = var.centos_iso_checksum
+    iso_storage_pool = var.iso_storage_pool
+    unmount          = true
+  }
 
   # VM hardware
   cores   = var.vm_cpu_cores

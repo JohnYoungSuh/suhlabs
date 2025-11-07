@@ -106,6 +106,13 @@ help: ## Show this help message
 	@echo "  kind-down        Delete kind cluster"
 	@echo "  kind-debug       Show detailed debug info"
 	@echo ""
+	@echo "${GREEN}Voice Interaction (AI-Powered):${RESET}"
+	@echo "  voice-up         Start voice services (Whisper STT + Coqui TTS)"
+	@echo "  voice-down       Stop voice services"
+	@echo "  voice-test       Test voice pipeline (STT → AI → TTS)"
+	@echo "  voice-status     Show voice service status"
+	@echo "  voice-logs       Show voice service logs"
+	@echo ""
 	@echo "${GREEN}Code Quality:${RESET}"
 	@echo "  lint             Run all linters"
 	@echo "  lint-terraform   Lint Terraform files"
@@ -262,6 +269,78 @@ vault-down: ## Stop Vault
 ollama-pull: ## Pull Llama3.1 for AI agent
 	@echo "${GREEN}Pulling Llama3.1 for AI agent...${RESET}"
 	$(OLLAMA) pull llama3.1:8b || echo "${YELLOW}⚠ Ollama not available locally${RESET}"
+
+# -----------------------------------------------------------------------------
+# Voice Interaction Services
+# -----------------------------------------------------------------------------
+voice-up: ## Start voice services (Whisper STT + Coqui TTS)
+	@echo "${GREEN}Starting voice interaction services...${RESET}"
+	@echo "  → Whisper STT (Speech-to-Text)"
+	@echo "  → Coqui TTS (Text-to-Speech)"
+	$(COMPOSE) up -d whisper-stt coqui-tts
+	@echo ""
+	@echo "${YELLOW}Waiting for models to download (this may take 2-3 minutes on first run)...${RESET}"
+	@sleep 90
+	@echo ""
+	@echo "${GREEN}╔════════════════════════════════════════════════════════════╗${RESET}"
+	@echo "${GREEN}║        ✓ Voice Services Ready!                            ║${RESET}"
+	@echo "${GREEN}╚════════════════════════════════════════════════════════════╝${RESET}"
+	@echo ""
+	@echo "Services available:"
+	@echo "  ${BLUE}Whisper STT:${RESET} http://localhost:9000"
+	@echo "  ${BLUE}Coqui TTS:${RESET}   http://localhost:5002"
+	@echo ""
+	@echo "Try it:"
+	@echo "  ${YELLOW}make voice-test${RESET}"
+
+voice-down: ## Stop voice services
+	@echo "${GREEN}Stopping voice services...${RESET}"
+	$(COMPOSE) rm -fsv whisper-stt coqui-tts
+
+voice-test: ## Test voice pipeline (STT → AI → TTS)
+	@echo "${GREEN}╔════════════════════════════════════════════════════════════╗${RESET}"
+	@echo "${GREEN}║          Testing Voice Pipeline                            ║${RESET}"
+	@echo "${GREEN}╚════════════════════════════════════════════════════════════╝${RESET}"
+	@echo ""
+	@echo "${YELLOW}[Step 1/4] Testing Whisper STT...${RESET}"
+	@curl -f http://localhost:9000/ >/dev/null 2>&1 && \
+		echo "  ${GREEN}✓ Whisper STT is accessible${RESET}" || \
+		(echo "  ${RED}✗ Whisper STT not running. Run 'make voice-up' first${RESET}" && exit 1)
+	@echo ""
+	@echo "${YELLOW}[Step 2/4] Testing Coqui TTS...${RESET}"
+	@curl -f http://localhost:5002/ >/dev/null 2>&1 && \
+		echo "  ${GREEN}✓ Coqui TTS is accessible${RESET}" || \
+		(echo "  ${RED}✗ Coqui TTS not running. Run 'make voice-up' first${RESET}" && exit 1)
+	@echo ""
+	@echo "${YELLOW}[Step 3/4] Testing TTS synthesis...${RESET}"
+	@curl -s "http://localhost:5002/api/tts?text=Hello+AIOps+Infrastructure+Platform" \
+		--output /tmp/aiops-test-voice.wav && \
+		echo "  ${GREEN}✓ TTS synthesis successful${RESET}" && \
+		echo "  ${BLUE}Audio saved to: /tmp/aiops-test-voice.wav${RESET}" || \
+		(echo "  ${RED}✗ TTS synthesis failed${RESET}" && exit 1)
+	@echo ""
+	@echo "${YELLOW}[Step 4/4] Checking audio file...${RESET}"
+	@file /tmp/aiops-test-voice.wav | grep -q "WAVE audio" && \
+		echo "  ${GREEN}✓ Valid WAV audio file generated${RESET}" || \
+		(echo "  ${RED}✗ Invalid audio file${RESET}" && exit 1)
+	@echo ""
+	@echo "${GREEN}╔════════════════════════════════════════════════════════════╗${RESET}"
+	@echo "${GREEN}║        ✓ Voice Pipeline Test Complete!                    ║${RESET}"
+	@echo "${GREEN}╚════════════════════════════════════════════════════════════╝${RESET}"
+	@echo ""
+	@echo "Play the test audio:"
+	@echo "  ${YELLOW}play /tmp/aiops-test-voice.wav${RESET}  # Linux (sox)"
+	@echo "  ${YELLOW}afplay /tmp/aiops-test-voice.wav${RESET}  # macOS"
+	@echo "  ${YELLOW}start /tmp/aiops-test-voice.wav${RESET}  # Windows"
+
+voice-logs: ## Show voice service logs
+	@echo "${GREEN}Voice service logs:${RESET}"
+	$(COMPOSE) logs -f whisper-stt coqui-tts
+
+voice-status: ## Show voice service status
+	@echo "${GREEN}Voice service status:${RESET}"
+	@echo ""
+	@$(COMPOSE) ps whisper-stt coqui-tts
 
 # -----------------------------------------------------------------------------
 # Kubernetes: kind (local)

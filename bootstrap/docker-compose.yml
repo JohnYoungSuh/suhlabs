@@ -82,12 +82,98 @@ services:
       timeout: 5s
       retries: 5
 
+  # ==========================================================================
+  # Voice Interaction Services
+  # ==========================================================================
+
+  # Whisper Speech-to-Text (OpenAI Whisper - self-hosted)
+  whisper-stt:
+    image: onerahmet/openai-whisper-asr-webservice:latest
+    container_name: aiops-whisper
+    ports:
+      - "9000:9000"
+    environment:
+      ASR_MODEL: base              # Options: tiny, base, small, medium, large
+      ASR_ENGINE: openai_whisper
+    volumes:
+      - whisper-models:/root/.cache/whisper
+    networks:
+      - aiops
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 90s            # Whisper needs time to download models
+    deploy:
+      resources:
+        limits:
+          cpus: '2'
+          memory: 2G
+    restart: unless-stopped
+
+  # Coqui TTS (Text-to-Speech - Mozilla TTS successor)
+  coqui-tts:
+    image: ghcr.io/coqui-ai/tts:latest
+    container_name: aiops-tts
+    ports:
+      - "5002:5002"
+    volumes:
+      - tts-models:/root/.local/share/tts
+    command: >
+      tts-server
+      --model_name tts_models/en/ljspeech/tacotron2-DDC
+      --use_cuda false
+    networks:
+      - aiops
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5002/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+    deploy:
+      resources:
+        limits:
+          cpus: '1'
+          memory: 1G
+    restart: unless-stopped
+
+  # Voice Gateway (WebSocket server for real-time voice streaming)
+  # Note: Requires building the service first
+  # Run: cd services/voice-gateway && docker build -t aiops-voice-gateway .
+  # voice-gateway:
+  #   image: aiops-voice-gateway:latest
+  #   container_name: aiops-voice-gateway
+  #   ports:
+  #     - "8080:8080"
+  #   environment:
+  #     WHISPER_URL: http://whisper-stt:9000
+  #     TTS_URL: http://coqui-tts:5002
+  #     AI_OPS_AGENT_URL: http://ai-ops-agent:30080
+  #     LOG_LEVEL: info
+  #   depends_on:
+  #     - whisper-stt
+  #     - coqui-tts
+  #   networks:
+  #     - aiops
+  #   healthcheck:
+  #     test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+  #     interval: 10s
+  #     timeout: 5s
+  #     retries: 3
+  #   restart: unless-stopped
+
 volumes:
   ollama-data:
     driver: local
   minio-data:
     driver: local
   postgres-data:
+    driver: local
+  whisper-models:
+    driver: local
+  tts-models:
     driver: local
 
 networks:

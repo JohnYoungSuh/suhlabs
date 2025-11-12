@@ -45,7 +45,7 @@
     vault_namespace: vault
 
     # Service names
-    coredns_app_label: k8s-app=coredns
+    coredns_app_label: k8s-app=kube-dns
     vault_app_label: app=vault
 
     # Expected minimum replicas

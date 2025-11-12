@@ -34,7 +34,7 @@ all:
           ansible_python_interpreter: /usr/bin/python3
 
           # Host variables
-          environment: development
+          deployment_env: development
           cluster_name: kind-suh-labs
 
       vars:

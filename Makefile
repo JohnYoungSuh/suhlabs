@@ -375,6 +375,20 @@ runner-up: cert-manager-up runner-token
 		--wait-for-jobs \
 		actions-runner-controller/actions-runner-controller \
 		--set authSecret.github_token=$$(kubectl get secret github-token -n github-runner -o jsonpath='{.data.token}' | base64 -d)
+	@echo "Waiting for ARC internal secrets..."
+	@for i in 1 2 3 4 5 6 7 8 9 10; do \
+		if kubectl get secret controller-manager -n github-runner >/dev/null 2>&1; then \
+			echo "✓ controller-manager secret exists"; \
+			break; \
+		fi; \
+		echo "Waiting for controller-manager secret ($$i/10)..."; \
+		sleep 5; \
+	done
+	@if ! kubectl get secret controller-manager -n github-runner >/dev/null 2>&1; then \
+		echo "❌ controller-manager secret not created after 50s"; \
+		kubectl logs -n github-runner -l app.kubernetes.io/name=actions-runner-controller --tail=50 2>/dev/null || true; \
+		exit 1; \
+	fi
 	@echo "Verifying ARC controller is ready..."
 	kubectl wait --namespace github-runner \
 		--for=condition=ready pod \

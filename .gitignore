@@ -21,3 +21,7 @@ bootstrap/*.log
 __pycache__/
 *.pyc
 .env
+
+# Extracted binaries (regenerate from tarballs)
+crictl
+k9s

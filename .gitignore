@@ -13,10 +13,6 @@ inventory/*.ini
 bootstrap/*.log
 .devcontainer/*.dev
 
-# VS Code
-.vscode/*.code-workspace
-*.code-workspace
-
 # General
 __pycache__/
 *.pyc

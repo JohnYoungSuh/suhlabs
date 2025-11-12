@@ -523,14 +523,18 @@
 
           Foundation Services Status:
             ✓ CoreDNS: {{ coredns_pod_count }} pods running
+            {% if vault_ns.rc == 0 %}
             ✓ Vault: {{ vault_pod_count | default('N/A') }} pods running
             {% if vault_status is defined %}
             ✓ Vault Status: {% if vault_status.sealed %}SEALED{% else %}UNSEALED{% endif %}
             {% endif %}
-            ✓ DNS Resolution: Working
-            {% if softhsm_slots is defined and softhsm_slots.rc == 0 %}
+            {% if softhsm_slots is defined and softhsm_slots.rc is defined and softhsm_slots.rc == 0 %}
             ✓ SoftHSM: Token initialized
             {% endif %}
+            {% else %}
+            ⚠ Vault: Not deployed (Day 5 task)
+            {% endif %}
+            ✓ DNS Resolution: Working
 
           Next Steps:
             1. If Vault is sealed, unseal it:

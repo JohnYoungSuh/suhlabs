@@ -178,7 +178,7 @@
           --command -- nslookup kubernetes.default.svc.cluster.local
       register: dns_cluster_test
       changed_when: false
-      failed_when: "'Address 1:' not in dns_cluster_test.stdout"
+      failed_when: "'Address:' not in dns_cluster_test.stdout or 'kubernetes.default.svc.cluster.local' not in dns_cluster_test.stdout"
       tags:
         - dns
         - coredns
@@ -186,7 +186,7 @@
     - name: Verify cluster.local DNS resolution
       debug:
         msg: "✓ cluster.local DNS resolution working"
-      when: "'Address 1:' in dns_cluster_test.stdout"
+      when: "'Address:' in dns_cluster_test.stdout"
       tags:
         - dns
         - coredns
@@ -207,7 +207,7 @@
     - name: Verify corp.local DNS resolution
       assert:
         that:
-          - "'Address 1:' in dns_corp_test.stdout"
+          - "'Address:' in dns_corp_test.stdout"
         fail_msg: "corp.local DNS resolution failed"
         success_msg: "✓ corp.local DNS resolution working"
       when: dns_corp_test.rc == 0

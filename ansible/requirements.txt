@@ -1,15 +1,15 @@
 # Ansible Automation Requirements
 # Install: pip install -r requirements.txt
 
-# Ansible core
-ansible>=2.15.0,<3.0.0
+# Ansible
+ansible-core>=2.15.0
+ansible>=8.0.0
 
 # Ansible linting
 ansible-lint>=6.17.0
 
 # Kubernetes support
 kubernetes>=27.2.0
-openshift>=0.13.0
 
 # YAML parsing
 PyYAML>=6.0

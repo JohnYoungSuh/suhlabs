@@ -1,0 +1,95 @@
+apiVersion: actions.summerwind.dev/v1alpha1
+kind: RunnerDeployment
+metadata:
+  name: aiops-runner
+  namespace: github-runner
+spec:
+  replicas: 1
+  template:
+    spec:
+      repository: JohnYoungSuh/suhlabs  # Your repo
+      labels:
+        - self-hosted
+        - linux
+        - aiops
+      
+      # Security: Run as non-root
+      securityContext:
+        runAsUser: 1000
+        runAsNonRoot: true
+        fsGroup: 1000
+      
+      # Resource limits
+      resources:
+        limits:
+          cpu: "1000m"
+          memory: "2Gi"
+        requests:
+          cpu: "500m"
+          memory: "1Gi"
+      
+      # Ephemeral runners (destroyed after job)
+      ephemeral: true
+      
+      # Docker-in-Docker for building images
+      dockerdWithinRunnerContainer: true
+---
+# Network Policy: Isolate runner namespace
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: runner-isolation
+  namespace: github-runner
+spec:
+  podSelector: {}
+  policyTypes:
+  - Ingress
+  - Egress
+  egress:
+  # Allow DNS
+  - to:
+    - namespaceSelector:
+        matchLabels:
+          name: kube-system
+    ports:
+    - protocol: UDP
+      port: 53
+  # Allow GitHub API
+  - to:
+    - podSelector: {}
+    ports:
+    - protocol: TCP
+      port: 443
+  # Deny everything else by default
+  ingress: []
+---
+# RBAC: Limit runner permissions
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: runner-sa
+  namespace: github-runner
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: runner-role
+  namespace: github-runner
+rules:
+- apiGroups: [""]
+  resources: ["pods", "pods/log"]
+  verbs: ["get", "list", "watch"]
+# NO cluster-admin! NO secrets access!
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: runner-binding
+  namespace: github-runner
+subjects:
+- kind: ServiceAccount
+  name: runner-sa
+roleRef:
+  kind: Role
+  name: runner-role
+  apiGroup: rbac.authorization.k8s.io

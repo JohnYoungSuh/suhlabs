@@ -147,7 +147,7 @@
 
     - name: Parse CoreDNS pod count
       set_fact:
-        coredns_pod_count: "{{ (coredns_pods_raw.stdout | from_json).items | length }}"
+        coredns_pod_count: "{{ (coredns_pods_raw.stdout | from_json)['items'] | length }}"
       tags:
         - dns
         - coredns
@@ -257,7 +257,7 @@
 
     - name: Parse Vault pod count
       set_fact:
-        vault_pod_count: "{{ (vault_pods_raw.stdout | from_json).items | length }}"
+        vault_pod_count: "{{ (vault_pods_raw.stdout | from_json)['items'] | length }}"
       when: vault_pods_raw.rc == 0
       tags:
         - vault

@@ -115,6 +115,15 @@ echo ""
 if [ "$SKIP_ANSIBLE" = false ]; then
     echo -e "${YELLOW}[3/5] Installing Ansible...${NC}"
 
+    # Detect if running in virtual environment
+    if [ -n "$VIRTUAL_ENV" ]; then
+        PIP_USER_FLAG=""
+        echo "Virtual environment detected, installing to venv..."
+    else
+        PIP_USER_FLAG="--user"
+        echo "Installing to user directory..."
+    fi
+
     # Determine installation method
     if [ "$(uname)" = "Darwin" ]; then
         # macOS
@@ -123,15 +132,15 @@ if [ "$SKIP_ANSIBLE" = false ]; then
             brew install ansible
         else
             echo -e "${YELLOW}Homebrew not found, using pip3...${NC}"
-            pip3 install --user ansible
+            pip3 install $PIP_USER_FLAG ansible
         fi
     else
         # Linux
         echo "Installing via pip3..."
-        pip3 install --user ansible
+        pip3 install $PIP_USER_FLAG ansible
 
-        # Add to PATH if not already there
-        if ! grep -q "/.local/bin" ~/.bashrc 2>/dev/null; then
+        # Add to PATH if not already there (only for --user installs)
+        if [ -z "$VIRTUAL_ENV" ] && ! grep -q "/.local/bin" ~/.bashrc 2>/dev/null; then
             echo 'export PATH="$HOME/.local/bin:$PATH"' >> ~/.bashrc
             echo -e "${YELLOW}Added ~/.local/bin to PATH in ~/.bashrc${NC}"
             echo -e "${YELLOW}Run: source ~/.bashrc${NC}"
@@ -159,12 +168,19 @@ echo ""
 
 echo -e "${YELLOW}[4/5] Installing ansible-lint...${NC}"
 
+# Detect if running in virtual environment
+if [ -n "$VIRTUAL_ENV" ]; then
+    PIP_USER_FLAG=""
+else
+    PIP_USER_FLAG="--user"
+fi
+
 if command -v ansible-lint &> /dev/null; then
     LINT_VERSION=$(ansible-lint --version | head -1)
     echo -e "${YELLOW}⚠ ansible-lint already installed: ${LINT_VERSION}${NC}"
 else
     echo "Installing ansible-lint..."
-    pip3 install --user ansible-lint
+    pip3 install $PIP_USER_FLAG ansible-lint
 
     if command -v ansible-lint &> /dev/null; then
         LINT_VERSION=$(ansible-lint --version | head -1)

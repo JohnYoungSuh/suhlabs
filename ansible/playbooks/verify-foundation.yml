@@ -469,6 +469,9 @@
           ⚠ VAULT_TOKEN not set - skipping PKI verification
           Set VAULT_TOKEN environment variable to enable PKI checks
           {% endif %}
+      when:
+        - vault_ns.rc == 0
+        - vault_token_check is defined
       tags:
         - pki
         - vault
@@ -481,7 +484,10 @@
       register: vault_secrets
       changed_when: false
       failed_when: false
-      when: vault_token_check.stdout != "not_set"
+      when:
+        - vault_ns.rc == 0
+        - vault_token_check is defined
+        - vault_token_check.stdout != "not_set"
       environment:
         VAULT_TOKEN: "{{ lookup('env', 'VAULT_TOKEN') }}"
       tags:
@@ -496,6 +502,8 @@
         fail_msg: "PKI engines not found (pki/ or pki_int/ missing)"
         success_msg: "✓ PKI engines enabled (pki/ and pki_int/)"
       when:
+        - vault_ns.rc == 0
+        - vault_token_check is defined
         - vault_token_check.stdout != "not_set"
         - vault_secrets.rc == 0
       tags:

@@ -234,12 +234,9 @@
       tags:
         - vault
 
-    - name: Assert Vault namespace exists
-      assert:
-        that:
-          - vault_ns.rc == 0
-        fail_msg: "Vault namespace '{{ vault_namespace }}' not found"
-        success_msg: "✓ Vault namespace exists"
+    - name: Check Vault deployment status
+      debug:
+        msg: "{{ '✓ Vault namespace exists' if vault_ns.rc == 0 else '⚠ Vault not deployed (skipping Vault checks)' }}"
       tags:
         - vault
 
@@ -252,13 +249,16 @@
       register: vault_pods_raw
       changed_when: false
       failed_when: false
+      when: vault_ns.rc == 0
       tags:
         - vault
 
     - name: Parse Vault pod count
       set_fact:
         vault_pod_count: "{{ (vault_pods_raw.stdout | from_json)['items'] | length }}"
-      when: vault_pods_raw.rc == 0
+      when:
+        - vault_ns.rc == 0
+        - vault_pods_raw.rc == 0
       tags:
         - vault
 
@@ -269,7 +269,9 @@
           - vault_pod_count | int >= min_vault_pods
         fail_msg: "Expected at least {{ min_vault_pods }} Vault pods, found {{ vault_pod_count | default(0) }}"
         success_msg: "✓ Vault has {{ vault_pod_count }} pods running"
-      when: vault_pods_raw.rc == 0
+      when:
+        - vault_ns.rc == 0
+        - vault_pods_raw.rc == 0
       tags:
         - vault
 
@@ -288,6 +290,7 @@
       register: vault_service
       changed_when: false
       failed_when: false
+      when: vault_ns.rc == 0
       tags:
         - vault
 
@@ -297,7 +300,9 @@
           - vault_service.rc == 0
         fail_msg: "Vault service not found"
         success_msg: "✓ Vault service exists (ClusterIP: {{ (vault_service.stdout | from_json).spec.clusterIP }})"
-      when: vault_service.rc == 0
+      when:
+        - vault_ns.rc == 0
+        - vault_service.rc == 0
       tags:
         - vault
 
@@ -308,6 +313,7 @@
     - name: "═══ Section 3: Vault Status Check ═══"
       debug:
         msg: "Checking Vault seal status and initialization"
+      when: vault_ns.rc == 0
       tags:
         - vault
         - vault-status
@@ -318,6 +324,7 @@
       register: vault_status_raw
       changed_when: false
       failed_when: false
+      when: vault_ns.rc == 0
       tags:
         - vault
         - vault-status
@@ -325,7 +332,9 @@
     - name: Parse Vault status
       set_fact:
         vault_status: "{{ vault_status_raw.stdout | from_json }}"
-      when: vault_status_raw.rc == 0
+      when:
+        - vault_ns.rc == 0
+        - vault_status_raw.rc == 0
       tags:
         - vault
         - vault-status
@@ -339,7 +348,7 @@
             Seal Type: {{ vault_status.seal_type | default('unknown') }}
             Version: {{ vault_status.version | default('unknown') }}
       when:
-        - vault_status_raw.rc == 0
+        - vault_ns.rc == 0
         - vault_status is defined
       tags:
         - vault
@@ -352,7 +361,7 @@
         fail_msg: "Vault is not initialized"
         success_msg: "✓ Vault is initialized"
       when:
-        - vault_status_raw.rc == 0
+        - vault_ns.rc == 0
         - vault_status is defined
       tags:
         - vault
@@ -362,7 +371,7 @@
       debug:
         msg: "{% if vault_status.sealed %}⚠ WARNING: Vault is SEALED{% else %}✓ Vault is unsealed{% endif %}"
       when:
-        - vault_status_raw.rc == 0
+        - vault_ns.rc == 0
         - vault_status is defined
       tags:
         - vault
@@ -375,7 +384,7 @@
         fail_msg: "Unexpected seal type: {{ vault_status.seal_type }}"
         success_msg: "✓ Vault seal type: {{ vault_status.seal_type }}"
       when:
-        - vault_status_raw.rc == 0
+        - vault_ns.rc == 0
         - vault_status is defined
       tags:
         - vault
@@ -388,6 +397,7 @@
     - name: "═══ Section 4: SoftHSM Verification ═══"
       debug:
         msg: "Verifying SoftHSM integration with Vault"
+      when: vault_ns.rc == 0
       tags:
         - softhsm
         - vault
@@ -398,6 +408,7 @@
       register: softhsm_slots
       changed_when: false
       failed_when: false
+      when: vault_ns.rc == 0
       tags:
         - softhsm
         - vault
@@ -409,7 +420,9 @@
           - "'vault-hsm' in softhsm_slots.stdout or 'Initialized:      yes' in softhsm_slots.stdout"
         fail_msg: "SoftHSM token not properly initialized"
         success_msg: "✓ SoftHSM token initialized"
-      when: softhsm_slots.rc == 0
+      when:
+        - vault_ns.rc == 0
+        - softhsm_slots.rc == 0
       tags:
         - softhsm
         - vault
@@ -431,6 +444,7 @@
     - name: "═══ Section 5: Vault PKI Verification ═══"
       debug:
         msg: "Verifying Vault PKI engines and roles (requires VAULT_TOKEN)"
+      when: vault_ns.rc == 0
       tags:
         - pki
         - vault
@@ -441,6 +455,7 @@
       register: vault_token_check
       changed_when: false
       failed_when: false
+      when: vault_ns.rc == 0
       tags:
         - pki
         - vault

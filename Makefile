@@ -258,6 +258,34 @@ clean:
 	$(MAKE) dev-down
 
 # -----------------------------------------------------------------------------
+# Reusable Secret Validation Functions
+# -----------------------------------------------------------------------------
+# Usage: $(call wait-for-secret,secret-name,namespace,timeout-seconds)
+define wait-for-secret
+	@echo "Waiting for secret $(1) in namespace $(2)..."
+	@for i in $$(seq 1 $(3)); do \
+		if kubectl get secret $(1) -n $(2) >/dev/null 2>&1; then \
+			echo "✓ Secret $(1) exists"; \
+			exit 0; \
+		fi; \
+		echo "Waiting for secret $(1) ($$i/$(3))..."; \
+		sleep 1; \
+	done; \
+	echo "❌ Secret $(1) not found after $(3) seconds"; \
+	exit 1
+endef
+
+# Usage: $(call validate-secret-key,secret-name,namespace,key-name)
+define validate-secret-key
+	@echo "Validating secret $(1) has key $(3)..."
+	@if ! kubectl get secret $(1) -n $(2) -o jsonpath='{.data.$(3)}' | grep -q .; then \
+		echo "❌ Secret $(1) missing key $(3)"; \
+		exit 1; \
+	fi
+	@echo "✓ Secret $(1) has key $(3)"
+endef
+
+# -----------------------------------------------------------------------------
 # cert-manager Installation with Full Validation
 # -----------------------------------------------------------------------------
 .PHONY: cert-manager-up cert-manager-down cert-validate
@@ -375,20 +403,7 @@ runner-up: cert-manager-up runner-token
 		--wait-for-jobs \
 		actions-runner-controller/actions-runner-controller \
 		--set authSecret.github_token=$$(kubectl get secret github-token -n github-runner -o jsonpath='{.data.token}' | base64 -d)
-	@echo "Waiting for ARC internal secrets..."
-	@for i in 1 2 3 4 5 6 7 8 9 10; do \
-		if kubectl get secret controller-manager -n github-runner >/dev/null 2>&1; then \
-			echo "✓ controller-manager secret exists"; \
-			break; \
-		fi; \
-		echo "Waiting for controller-manager secret ($$i/10)..."; \
-		sleep 5; \
-	done
-	@if ! kubectl get secret controller-manager -n github-runner >/dev/null 2>&1; then \
-		echo "❌ controller-manager secret not created after 50s"; \
-		kubectl logs -n github-runner -l app.kubernetes.io/name=actions-runner-controller --tail=50 2>/dev/null || true; \
-		exit 1; \
-	fi
+	$(call wait-for-secret,controller-manager,github-runner,60)
 	@echo "Verifying ARC controller is ready..."
 	kubectl wait --namespace github-runner \
 		--for=condition=ready pod \

@@ -748,3 +748,261 @@ According to the 14-Day Sprint Plan, Day 4 focuses on:
 - **Status: Day 3 objectives completed!**
 
 ---
+
+## Important Troubleshooting Topics
+
+### Cert-Manager Race Conditions with K8s
+
+**Issue**: Cert-manager can encounter race conditions during cluster bootstrap
+**Symptoms**: Certificates not issued, empty cert secrets, cert-manager pod crashes
+
+**Common Race Conditions:**
+
+#### 1. CRD Not Ready
+```bash
+# Error: "no matches for kind Certificate in version cert-manager.io/v1"
+# Cause: CRDs not established before Certificate resources applied
+
+# Solution: Wait for CRDs
+kubectl wait --for condition=established --timeout=120s \
+  crd/certificates.cert-manager.io \
+  crd/issuers.cert-manager.io \
+  crd/clusterissuers.cert-manager.io
+```
+
+#### 2. Webhook Not Ready
+```bash
+# Error: "Internal error occurred: failed calling webhook"
+# Cause: Cert-manager webhook pod not ready
+
+# Solution: Wait for webhook
+kubectl wait --for=condition=available --timeout=120s \
+  deployment/cert-manager-webhook -n cert-manager
+
+# Or disable validation temporarily (dev only!)
+kubectl label namespace cert-manager cert-manager.io/disable-validation=true
+```
+
+#### 3. Issuer Not Ready
+```bash
+# Error: Certificate stays in "Pending" state
+# Cause: ClusterIssuer/Issuer not ready before Certificate creation
+
+# Solution: Check issuer status
+kubectl get clusterissuer vault-issuer -o yaml
+# Look for: status.conditions[?(@.type=="Ready")].status == "True"
+
+# Wait for issuer
+kubectl wait --for=condition=ready --timeout=120s \
+  clusterissuer/vault-issuer
+```
+
+#### 4. Vault PKI Not Configured
+```bash
+# Error: "error getting Vault client: error reading Vault role"
+# Cause: Vault PKI engine or role not set up
+
+# Solution: Initialize Vault PKI first
+vault secrets enable pki
+vault write pki_int/roles/kubernetes \
+  allowed_domains=cluster.local \
+  allow_subdomains=true
+```
+
+#### 5. K8s Auth Not Configured
+```bash
+# Error: "error logging in to Vault: error authenticating"
+# Cause: Vault Kubernetes auth method not configured
+
+# Solution: Configure Vault K8s auth
+vault auth enable kubernetes
+vault write auth/kubernetes/config \
+  kubernetes_host="https://kubernetes.default.svc:443"
+
+vault write auth/kubernetes/role/cert-manager \
+  bound_service_account_names=cert-manager \
+  bound_service_account_namespaces=cert-manager \
+  policies=pki-policy \
+  ttl=24h
+```
+
+#### 6. DNS Resolution During Bootstrap
+```bash
+# Error: "dial tcp: lookup vault.vault.svc.cluster.local: no such host"
+# Cause: CoreDNS not ready when cert-manager starts
+
+# Solution: Add init container or readiness check
+apiVersion: v1
+kind: Pod
+spec:
+  initContainers:
+  - name: wait-for-dns
+    image: busybox
+    command:
+    - sh
+    - -c
+    - |
+      until nslookup vault.vault.svc.cluster.local; do
+        echo "Waiting for DNS..."
+        sleep 2
+      done
+```
+
+### Debugging Cert-Manager Issues
+
+#### Check Certificate Status
+```bash
+# View certificate details
+kubectl describe certificate my-cert -n my-namespace
+
+# Check certificate events
+kubectl get events -n my-namespace --field-selector involvedObject.name=my-cert
+
+# Check certificate secret
+kubectl get secret my-cert-tls -n my-namespace
+kubectl get secret my-cert-tls -n my-namespace -o jsonpath='{.data.tls\.crt}' | base64 -d | openssl x509 -text -noout
+```
+
+#### Check Cert-Manager Logs
+```bash
+# Controller logs
+kubectl logs -n cert-manager deploy/cert-manager --tail=100
+
+# Webhook logs
+kubectl logs -n cert-manager deploy/cert-manager-webhook --tail=100
+
+# CA injector logs
+kubectl logs -n cert-manager deploy/cert-manager-cainjector --tail=100
+```
+
+#### Check ClusterIssuer/Issuer
+```bash
+# View issuer status
+kubectl get clusterissuer
+kubectl describe clusterissuer vault-issuer
+
+# Check issuer conditions
+kubectl get clusterissuer vault-issuer -o jsonpath='{.status.conditions}'
+```
+
+#### Manual Certificate Request
+```bash
+# Test certificate issuance manually
+cat <<EOF | kubectl apply -f -
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: test-cert
+  namespace: default
+spec:
+  secretName: test-cert-tls
+  issuerRef:
+    name: vault-issuer
+    kind: ClusterIssuer
+  commonName: test.example.com
+  dnsNames:
+  - test.example.com
+EOF
+
+# Watch certificate creation
+kubectl get certificate test-cert -w
+```
+
+### Best Practices: Avoiding Race Conditions
+
+#### 1. Proper Ordering in Terraform/Ansible
+```hcl
+# Terraform example
+resource "helm_release" "cert_manager" {
+  # ... cert-manager config
+}
+
+resource "null_resource" "wait_for_crds" {
+  depends_on = [helm_release.cert_manager]
+
+  provisioner "local-exec" {
+    command = <<-EOT
+      kubectl wait --for condition=established --timeout=120s \
+        crd/certificates.cert-manager.io
+    EOT
+  }
+}
+
+resource "kubernetes_manifest" "vault_issuer" {
+  depends_on = [null_resource.wait_for_crds]
+  # ... ClusterIssuer config
+}
+```
+
+#### 2. Use Helm Post-Install Hooks
+```yaml
+# charts/app/templates/certificate.yaml
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  annotations:
+    "helm.sh/hook": post-install,post-upgrade
+    "helm.sh/hook-weight": "5"
+spec:
+  # ... certificate spec
+```
+
+#### 3. Add Readiness Checks
+```yaml
+# Application deployment
+apiVersion: apps/v1
+kind: Deployment
+spec:
+  template:
+    spec:
+      initContainers:
+      - name: wait-for-cert
+        image: busybox
+        command:
+        - sh
+        - -c
+        - |
+          until [ -f /etc/tls/tls.crt ]; do
+            echo "Waiting for certificate..."
+            sleep 2
+          done
+        volumeMounts:
+        - name: tls
+          mountPath: /etc/tls
+      volumes:
+      - name: tls
+        secret:
+          secretName: app-cert-tls
+```
+
+#### 4. Use cert-manager-csi-driver (Advanced)
+```yaml
+# Mount certificates directly to pods via CSI
+apiVersion: v1
+kind: Pod
+spec:
+  volumes:
+  - name: tls
+    csi:
+      driver: csi.cert-manager.io
+      volumeAttributes:
+        csi.cert-manager.io/issuer-name: vault-issuer
+        csi.cert-manager.io/issuer-kind: ClusterIssuer
+        csi.cert-manager.io/common-name: app.example.com
+```
+
+### Why This Matters for Day 4-5
+
+When we deploy **DNS + PKI + Cert-manager** in sequence:
+1. DNS must be ready before Vault
+2. Vault must be ready before cert-manager
+3. Cert-manager CRDs must be ready before Issuers
+4. Issuers must be ready before Certificates
+
+**Proper sequence prevents race conditions** and empty certificate secrets.
+
+### Reference
+- [Cert-manager Troubleshooting](https://cert-manager.io/docs/troubleshooting/)
+- [Kubernetes Race Conditions](https://kubernetes.io/docs/concepts/workloads/controllers/deployment/#deployment-status)
+
+---

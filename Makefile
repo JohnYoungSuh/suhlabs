@@ -168,50 +168,6 @@ migrate-state:
 	@echo "Migration complete. Verify with 'terraform state list'"
 
 # -----------------------------------------------------------------------------
-# GitHub Actions Self-Hosted Runner
-# -----------------------------------------------------------------------------
-.PHONY: runner-up runner-down runner-token
-
-cert-manager-up:
-	@echo "${GREEN}Installing cert-manager...${RESET}"
-	kubectl apply -f https://github.com/cert-manager/cert-manager/releases/download/v1.13.0/cert-manager.yaml
-	@echo "Waiting for cert-manager..."
-	kubectl wait --for=condition=ready pod -l app.kubernetes.io/instance=cert-manager -n cert-manager --timeout=120s || true
-
-
-runner-token:
-	@echo "${GREEN}Get GitHub PAT from: https://github.com/settings/tokens${RESET}"
-	@echo "Required scopes: repo, workflow, admin:org"
-	@read -p "Enter GitHub PAT: " token && \
-		kubectl create namespace github-runner || true && \
-		kubectl create secret generic github-token \
-			--namespace=github-runner \
-			--from-literal=token=$$token \
-			--dry-run=client -o yaml | kubectl apply -f -
-
-runner-up: cert-manager-up runner-token
-        @echo "${GREEN}Installing Actions Runner Controller...${RESET}"
-	helm repo add actions-runner-controller https://actions-runner-controller.github.io/actions-runner-controller || true
-	helm repo update
-	helm install arc \
-		--namespace github-runner --create-namespace \
-		actions-runner-controller/actions-runner-controller \
-		--set authSecret.github_token=$$(kubectl get secret github-token -n github-runner -o jsonpath='{.data.token}' | base64 -d)
-	@echo "Waiting 30s for webhook..."
-	sleep 30
-	kubectl apply -f infra/github-runner/runner.yaml
-
-runner-wait:
-	@echo "${GREEN}Waiting for Actions Runner Controller webhook...${RESET}"
-	sleep 30
-	kubectl wait --for=condition=ready pod -l app.kubernetes.io/name=actions-runner-controller -n github-runner --timeout=120s
-
-runner-down:
-	@echo "${GREEN}Removing GitHub Actions runners...${RESET}"
-	helm uninstall arc -n github-runner || true
-	kubectl delete namespace github-runner || true
-
-# -----------------------------------------------------------------------------
 # Testing
 # -----------------------------------------------------------------------------
 test: test-$(ENV)

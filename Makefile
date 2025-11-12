@@ -11,6 +11,7 @@
         init init-local init-prod \
         plan plan-local plan-prod \
         apply apply-local apply-prod \
+        tf-fmt tf-validate tf-destroy tf-practice \
         test test-local test-prod test-ai \
         lint format validate \
         sbom sign \
@@ -72,6 +73,12 @@ help:
 	@echo "  init-prod        Initialize Terraform with Proxmox backend"
 	@echo "  apply-prod       Apply Terraform to Proxmox"
 	@echo "  migrate-state    Migrate state from local → prod"
+	@echo ""
+	@echo "${GREEN}Day 3: Terraform Practice:${RESET}"
+	@echo "  tf-fmt           Format Terraform code"
+	@echo "  tf-validate      Validate Terraform configuration"
+	@echo "  tf-destroy       Destroy local infrastructure"
+	@echo "  tf-practice      Practice Terraform workflow (target: <2min)"
 	@echo ""
 	@echo "${GREEN}Shared:${RESET}"
 	@echo "  lint             Run all linters"
@@ -166,6 +173,43 @@ migrate-state:
 	@echo "2. Reconfigure backend"
 	cd infra/proxmox && $(TERRAFORM) init -migrate-state -force-copy -backend-config="../$(TF_BACKEND_PROD)"
 	@echo "Migration complete. Verify with 'terraform state list'"
+
+# Day 3 targets
+tf-fmt:
+	@echo "${GREEN}Formatting Terraform code...${RESET}"
+	cd infra/local && $(TERRAFORM) fmt
+	cd infra/modules && $(TERRAFORM) fmt -recursive
+
+tf-validate: init-local
+	@echo "${GREEN}Validating Terraform configuration...${RESET}"
+	cd infra/local && $(TERRAFORM) validate
+
+tf-destroy:
+	@echo "${YELLOW}Destroying local infrastructure...${RESET}"
+	cd infra/local && $(TERRAFORM) destroy -auto-approve
+	$(MAKE) kind-down
+
+tf-practice:
+	@echo "${GREEN}Day 3: Terraform Muscle Memory Practice${RESET}"
+	@echo "This will run: init → plan → apply → destroy"
+	@echo "Target: Complete in <2 minutes"
+	@echo ""
+	@echo "Starting practice run..."
+	@start=$$(date +%s); \
+	$(MAKE) init-local && \
+	$(MAKE) plan-local && \
+	cd infra/local && $(TERRAFORM) apply -auto-approve plan.tfplan && \
+	sleep 5 && \
+	$(TERRAFORM) destroy -auto-approve && \
+	end=$$(date +%s); \
+	elapsed=$$((end - start)); \
+	echo ""; \
+	echo "${GREEN}Practice run completed in $$elapsed seconds${RESET}"; \
+	if [ $$elapsed -lt 120 ]; then \
+		echo "${GREEN}✅ SUCCESS! Under 2 minutes - muscle memory achieved!${RESET}"; \
+	else \
+		echo "${YELLOW}⏱️  Not quite there yet. Target: <120s, Actual: $${elapsed}s${RESET}"; \
+	fi
 
 # -----------------------------------------------------------------------------
 # Testing

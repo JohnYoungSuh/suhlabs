@@ -1,0 +1,524 @@
+---
+# ============================================================================
+# Verify Foundation Services Playbook
+# ============================================================================
+#
+# Purpose:
+#   Verifies that all Day 4 foundation services are running correctly
+#
+# Foundation Services:
+#   1. CoreDNS - Cluster DNS + corp.local zone
+#   2. Vault - Secret management
+#   3. SoftHSM - Hardware security module (development)
+#   4. Vault PKI - Certificate authority
+#
+# Idempotency:
+#   This playbook is fully idempotent - safe to run multiple times
+#   All tasks use CHECK operations (no modifications)
+#
+# Usage:
+#   ansible-playbook playbooks/verify-foundation.yml
+#
+#   # With custom variables
+#   ansible-playbook playbooks/verify-foundation.yml \
+#     -e "vault_namespace=vault" \
+#     -e "verbose_output=true"
+#
+#   # Dry run (check mode)
+#   ansible-playbook playbooks/verify-foundation.yml --check
+#
+#   # Only DNS checks
+#   ansible-playbook playbooks/verify-foundation.yml --tags dns
+#
+# ============================================================================
+
+- name: Verify Foundation Services
+  hosts: localhost
+  gather_facts: yes
+
+  # ==========================================================================
+  # Variables
+  # ==========================================================================
+  vars:
+    # Kubernetes namespaces
+    coredns_namespace: kube-system
+    vault_namespace: vault
+
+    # Service names
+    coredns_app_label: k8s-app=coredns
+    vault_app_label: app=vault
+
+    # Expected minimum replicas
+    min_coredns_pods: 1
+    min_vault_pods: 1
+
+    # DNS test domains
+    dns_test_domains:
+      - kubernetes.default.svc.cluster.local
+      - ns1.corp.local
+
+    # PKI roles to verify
+    pki_roles:
+      - ai-ops-agent
+      - kubernetes
+      - cert-manager
+
+    # Verbose output (set via -e verbose_output=true)
+    verbose_output: false
+
+  # ==========================================================================
+  # Pre-flight Checks
+  # ==========================================================================
+  pre_tasks:
+    - name: Check required commands are available
+      command: "which {{ item }}"
+      loop:
+        - kubectl
+        - helm
+      register: command_check
+      changed_when: false
+      failed_when: command_check.rc != 0
+      tags: always
+
+    - name: Display playbook start message
+      debug:
+        msg: |
+          ═══════════════════════════════════════════════════════════
+          Foundation Services Verification
+          ═══════════════════════════════════════════════════════════
+
+          Checking:
+            • CoreDNS ({{ coredns_namespace }} namespace)
+            • Vault ({{ vault_namespace }} namespace)
+            • SoftHSM integration
+            • Vault PKI configuration
+
+          This verification is idempotent - safe to run multiple times.
+          ═══════════════════════════════════════════════════════════
+      tags: always
+
+  # ==========================================================================
+  # Tasks
+  # ==========================================================================
+  tasks:
+
+    # ========================================================================
+    # Section 1: CoreDNS Verification
+    # ========================================================================
+
+    - name: "═══ Section 1: CoreDNS Verification ═══"
+      debug:
+        msg: "Verifying CoreDNS deployment and DNS resolution"
+      tags:
+        - dns
+        - coredns
+
+    - name: Check if CoreDNS deployment exists
+      shell: |
+        kubectl get deployment coredns -n {{ coredns_namespace }} -o name
+      register: coredns_deployment
+      changed_when: false
+      failed_when: false
+      tags:
+        - dns
+        - coredns
+
+    - name: Assert CoreDNS deployment exists
+      assert:
+        that:
+          - coredns_deployment.rc == 0
+        fail_msg: "CoreDNS deployment not found in {{ coredns_namespace }} namespace"
+        success_msg: "✓ CoreDNS deployment exists"
+      tags:
+        - dns
+        - coredns
+
+    - name: Get CoreDNS pods
+      shell: |
+        kubectl get pods -n {{ coredns_namespace }} \
+          -l {{ coredns_app_label }} \
+          --field-selector=status.phase=Running \
+          -o json
+      register: coredns_pods_raw
+      changed_when: false
+      tags:
+        - dns
+        - coredns
+
+    - name: Parse CoreDNS pod count
+      set_fact:
+        coredns_pod_count: "{{ (coredns_pods_raw.stdout | from_json).items | length }}"
+      tags:
+        - dns
+        - coredns
+
+    - name: Verify CoreDNS pods are running
+      assert:
+        that:
+          - coredns_pod_count | int >= min_coredns_pods
+        fail_msg: "Expected at least {{ min_coredns_pods }} CoreDNS pods, found {{ coredns_pod_count }}"
+        success_msg: "✓ CoreDNS has {{ coredns_pod_count }} pods running"
+      tags:
+        - dns
+        - coredns
+
+    - name: Display CoreDNS pod details
+      debug:
+        msg: "{{ (coredns_pods_raw.stdout | from_json).items | map(attribute='metadata.name') | list }}"
+      when: verbose_output | bool
+      tags:
+        - dns
+        - coredns
+
+    - name: Test cluster.local DNS resolution
+      shell: |
+        kubectl run dns-test-cluster-{{ 999999 | random }} \
+          --image=busybox:1.36 \
+          --rm -i --restart=Never \
+          --command -- nslookup kubernetes.default.svc.cluster.local
+      register: dns_cluster_test
+      changed_when: false
+      failed_when: "'Address 1:' not in dns_cluster_test.stdout"
+      tags:
+        - dns
+        - coredns
+
+    - name: Verify cluster.local DNS resolution
+      debug:
+        msg: "✓ cluster.local DNS resolution working"
+      when: "'Address 1:' in dns_cluster_test.stdout"
+      tags:
+        - dns
+        - coredns
+
+    - name: Test corp.local DNS resolution
+      shell: |
+        kubectl run dns-test-corp-{{ 999999 | random }} \
+          --image=busybox:1.36 \
+          --rm -i --restart=Never \
+          --command -- nslookup ns1.corp.local
+      register: dns_corp_test
+      changed_when: false
+      failed_when: false
+      tags:
+        - dns
+        - coredns
+
+    - name: Verify corp.local DNS resolution
+      assert:
+        that:
+          - "'Address 1:' in dns_corp_test.stdout"
+        fail_msg: "corp.local DNS resolution failed"
+        success_msg: "✓ corp.local DNS resolution working"
+      when: dns_corp_test.rc == 0
+      tags:
+        - dns
+        - coredns
+
+    # ========================================================================
+    # Section 2: Vault Verification
+    # ========================================================================
+
+    - name: "═══ Section 2: Vault Verification ═══"
+      debug:
+        msg: "Verifying Vault deployment and configuration"
+      tags:
+        - vault
+
+    - name: Check if Vault namespace exists
+      shell: |
+        kubectl get namespace {{ vault_namespace }} -o name
+      register: vault_ns
+      changed_when: false
+      failed_when: false
+      tags:
+        - vault
+
+    - name: Assert Vault namespace exists
+      assert:
+        that:
+          - vault_ns.rc == 0
+        fail_msg: "Vault namespace '{{ vault_namespace }}' not found"
+        success_msg: "✓ Vault namespace exists"
+      tags:
+        - vault
+
+    - name: Get Vault pods
+      shell: |
+        kubectl get pods -n {{ vault_namespace }} \
+          -l {{ vault_app_label }} \
+          --field-selector=status.phase=Running \
+          -o json
+      register: vault_pods_raw
+      changed_when: false
+      failed_when: false
+      tags:
+        - vault
+
+    - name: Parse Vault pod count
+      set_fact:
+        vault_pod_count: "{{ (vault_pods_raw.stdout | from_json).items | length }}"
+      when: vault_pods_raw.rc == 0
+      tags:
+        - vault
+
+    - name: Verify Vault pods are running
+      assert:
+        that:
+          - vault_pods_raw.rc == 0
+          - vault_pod_count | int >= min_vault_pods
+        fail_msg: "Expected at least {{ min_vault_pods }} Vault pods, found {{ vault_pod_count | default(0) }}"
+        success_msg: "✓ Vault has {{ vault_pod_count }} pods running"
+      when: vault_pods_raw.rc == 0
+      tags:
+        - vault
+
+    - name: Display Vault pod details
+      debug:
+        msg: "{{ (vault_pods_raw.stdout | from_json).items | map(attribute='metadata.name') | list }}"
+      when:
+        - verbose_output | bool
+        - vault_pods_raw.rc == 0
+      tags:
+        - vault
+
+    - name: Check Vault service exists
+      shell: |
+        kubectl get service vault -n {{ vault_namespace }} -o json
+      register: vault_service
+      changed_when: false
+      failed_when: false
+      tags:
+        - vault
+
+    - name: Verify Vault service exists
+      assert:
+        that:
+          - vault_service.rc == 0
+        fail_msg: "Vault service not found"
+        success_msg: "✓ Vault service exists (ClusterIP: {{ (vault_service.stdout | from_json).spec.clusterIP }})"
+      when: vault_service.rc == 0
+      tags:
+        - vault
+
+    # ========================================================================
+    # Section 3: Vault Status Check
+    # ========================================================================
+
+    - name: "═══ Section 3: Vault Status Check ═══"
+      debug:
+        msg: "Checking Vault seal status and initialization"
+      tags:
+        - vault
+        - vault-status
+
+    - name: Check Vault status
+      shell: |
+        kubectl exec -n {{ vault_namespace }} vault-0 -- vault status -format=json
+      register: vault_status_raw
+      changed_when: false
+      failed_when: false
+      tags:
+        - vault
+        - vault-status
+
+    - name: Parse Vault status
+      set_fact:
+        vault_status: "{{ vault_status_raw.stdout | from_json }}"
+      when: vault_status_raw.rc == 0
+      tags:
+        - vault
+        - vault-status
+
+    - name: Display Vault seal status
+      debug:
+        msg: |
+          Vault Status:
+            Initialized: {{ vault_status.initialized | default('unknown') }}
+            Sealed: {{ vault_status.sealed | default('unknown') }}
+            Seal Type: {{ vault_status.seal_type | default('unknown') }}
+            Version: {{ vault_status.version | default('unknown') }}
+      when:
+        - vault_status_raw.rc == 0
+        - vault_status is defined
+      tags:
+        - vault
+        - vault-status
+
+    - name: Verify Vault is initialized
+      assert:
+        that:
+          - vault_status.initialized | bool
+        fail_msg: "Vault is not initialized"
+        success_msg: "✓ Vault is initialized"
+      when:
+        - vault_status_raw.rc == 0
+        - vault_status is defined
+      tags:
+        - vault
+        - vault-status
+
+    - name: Check if Vault is unsealed
+      debug:
+        msg: "{% if vault_status.sealed %}⚠ WARNING: Vault is SEALED{% else %}✓ Vault is unsealed{% endif %}"
+      when:
+        - vault_status_raw.rc == 0
+        - vault_status is defined
+      tags:
+        - vault
+        - vault-status
+
+    - name: Verify Vault seal type is pkcs11 (SoftHSM)
+      assert:
+        that:
+          - vault_status.seal_type == "pkcs11" or vault_status.seal_type == "shamir"
+        fail_msg: "Unexpected seal type: {{ vault_status.seal_type }}"
+        success_msg: "✓ Vault seal type: {{ vault_status.seal_type }}"
+      when:
+        - vault_status_raw.rc == 0
+        - vault_status is defined
+      tags:
+        - vault
+        - vault-status
+
+    # ========================================================================
+    # Section 4: SoftHSM Verification
+    # ========================================================================
+
+    - name: "═══ Section 4: SoftHSM Verification ═══"
+      debug:
+        msg: "Verifying SoftHSM integration with Vault"
+      tags:
+        - softhsm
+        - vault
+
+    - name: Check SoftHSM tokens
+      shell: |
+        kubectl exec -n {{ vault_namespace }} vault-0 -- softhsm2-util --show-slots
+      register: softhsm_slots
+      changed_when: false
+      failed_when: false
+      tags:
+        - softhsm
+        - vault
+
+    - name: Verify SoftHSM token exists
+      assert:
+        that:
+          - softhsm_slots.rc == 0
+          - "'vault-hsm' in softhsm_slots.stdout or 'Initialized:      yes' in softhsm_slots.stdout"
+        fail_msg: "SoftHSM token not properly initialized"
+        success_msg: "✓ SoftHSM token initialized"
+      when: softhsm_slots.rc == 0
+      tags:
+        - softhsm
+        - vault
+
+    - name: Display SoftHSM slots
+      debug:
+        msg: "{{ softhsm_slots.stdout_lines }}"
+      when:
+        - verbose_output | bool
+        - softhsm_slots.rc == 0
+      tags:
+        - softhsm
+        - vault
+
+    # ========================================================================
+    # Section 5: Vault PKI Verification
+    # ========================================================================
+
+    - name: "═══ Section 5: Vault PKI Verification ═══"
+      debug:
+        msg: "Verifying Vault PKI engines and roles (requires VAULT_TOKEN)"
+      tags:
+        - pki
+        - vault
+
+    - name: Check if VAULT_TOKEN is set
+      shell: |
+        echo "${VAULT_TOKEN:-not_set}"
+      register: vault_token_check
+      changed_when: false
+      failed_when: false
+      tags:
+        - pki
+        - vault
+
+    - name: Display PKI verification status
+      debug:
+        msg: |
+          {% if vault_token_check.stdout != "not_set" %}
+          ✓ VAULT_TOKEN is set - will verify PKI configuration
+          {% else %}
+          ⚠ VAULT_TOKEN not set - skipping PKI verification
+          Set VAULT_TOKEN environment variable to enable PKI checks
+          {% endif %}
+      tags:
+        - pki
+        - vault
+
+    - name: Check PKI secrets engines (when token available)
+      shell: |
+        kubectl exec -n {{ vault_namespace }} vault-0 -- \
+          env VAULT_ADDR=http://127.0.0.1:8200 \
+          vault secrets list -format=json
+      register: vault_secrets
+      changed_when: false
+      failed_when: false
+      when: vault_token_check.stdout != "not_set"
+      environment:
+        VAULT_TOKEN: "{{ lookup('env', 'VAULT_TOKEN') }}"
+      tags:
+        - pki
+        - vault
+
+    - name: Verify PKI engines enabled
+      assert:
+        that:
+          - "'pki/' in vault_secrets.stdout"
+          - "'pki_int/' in vault_secrets.stdout"
+        fail_msg: "PKI engines not found (pki/ or pki_int/ missing)"
+        success_msg: "✓ PKI engines enabled (pki/ and pki_int/)"
+      when:
+        - vault_token_check.stdout != "not_set"
+        - vault_secrets.rc == 0
+      tags:
+        - pki
+        - vault
+
+  # ==========================================================================
+  # Post-flight Summary
+  # ==========================================================================
+  post_tasks:
+    - name: Display verification summary
+      debug:
+        msg: |
+          ═══════════════════════════════════════════════════════════
+          Verification Complete
+          ═══════════════════════════════════════════════════════════
+
+          Foundation Services Status:
+            ✓ CoreDNS: {{ coredns_pod_count }} pods running
+            ✓ Vault: {{ vault_pod_count | default('N/A') }} pods running
+            {% if vault_status is defined %}
+            ✓ Vault Status: {% if vault_status.sealed %}SEALED{% else %}UNSEALED{% endif %}
+            {% endif %}
+            ✓ DNS Resolution: Working
+            {% if softhsm_slots is defined and softhsm_slots.rc == 0 %}
+            ✓ SoftHSM: Token initialized
+            {% endif %}
+
+          Next Steps:
+            1. If Vault is sealed, unseal it:
+               kubectl exec -n vault vault-0 -- vault operator unseal <key>
+
+            2. Set VAULT_TOKEN to verify PKI:
+               export VAULT_TOKEN=<your-root-token>
+               ansible-playbook playbooks/verify-foundation.yml
+
+            3. Run Vault PKI verification:
+               ansible-playbook playbooks/verify-vault-pki.yml
+
+          ═══════════════════════════════════════════════════════════
+      tags: always

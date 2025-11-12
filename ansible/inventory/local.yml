@@ -1,0 +1,137 @@
+# ============================================================================
+# Ansible Inventory - Local Development
+# ============================================================================
+#
+# Inventory defines:
+# - What hosts exist
+# - How to connect to them
+# - Variables specific to hosts/groups
+#
+# Inventory Format (YAML):
+# - all: Root group containing all hosts
+# - children: Nested groups for organization
+# - hosts: Individual systems
+# - vars: Variables applied to hosts/groups
+#
+# Why YAML over INI?
+# - Better structure for complex inventories
+# - Native support for nested data
+# - More readable for humans
+# - Same functionality as INI format
+#
+# ============================================================================
+
+all:
+  children:
+    # ========================================================================
+    # Local Development Group
+    # ========================================================================
+    local:
+      hosts:
+        localhost:
+          # Connection settings
+          ansible_connection: local
+          ansible_python_interpreter: /usr/bin/python3
+
+          # Host variables
+          environment: development
+          cluster_name: kind-suh-labs
+
+      vars:
+        # Group variables for all hosts in 'local' group
+
+        # Kubernetes configuration
+        kubeconfig_path: "{{ lookup('env', 'HOME') }}/.kube/config"
+        kubectl_bin: /usr/local/bin/kubectl
+        helm_bin: /usr/local/bin/helm
+
+        # Vault configuration
+        vault_addr: http://localhost:8200
+        vault_namespace: vault
+        vault_service_name: vault
+
+        # Foundation services
+        foundation_services:
+          - name: coredns
+            namespace: kube-system
+            type: deployment
+            label_selector: k8s-app=coredns
+
+          - name: vault
+            namespace: vault
+            type: statefulset
+            label_selector: app=vault
+
+        # PKI configuration
+        pki_engines:
+          - name: pki
+            type: root
+            path: pki/
+
+          - name: pki_int
+            type: intermediate
+            path: pki_int/
+
+        pki_roles:
+          - ai-ops-agent
+          - kubernetes
+          - cert-manager
+
+        # DNS zones to test
+        dns_test_domains:
+          - kubernetes.default.svc.cluster.local
+          - ns1.corp.local
+          - vault.corp.local
+
+    # ========================================================================
+    # Production Group (Future)
+    # ========================================================================
+    # Uncomment when ready for production deployment
+    #
+    # production:
+    #   hosts:
+    #     k8s-control-01:
+    #       ansible_host: 10.0.1.10
+    #       ansible_user: ansible
+    #       ansible_ssh_private_key_file: ~/.ssh/k8s_rsa
+    #
+    #     k8s-control-02:
+    #       ansible_host: 10.0.1.11
+    #       ansible_user: ansible
+    #
+    #     k8s-control-03:
+    #       ansible_host: 10.0.1.12
+    #       ansible_user: ansible
+    #
+    #   vars:
+    #     environment: production
+    #     cluster_name: production-cluster
+    #     vault_addr: https://vault.example.com:8200
+
+    # ========================================================================
+    # Staging Group (Future)
+    # ========================================================================
+    # staging:
+    #   hosts:
+    #     k8s-staging-01:
+    #       ansible_host: 10.0.2.10
+    #       ansible_user: ansible
+    #
+    #   vars:
+    #     environment: staging
+    #     cluster_name: staging-cluster
+
+# ============================================================================
+# Global Variables (Applied to ALL hosts)
+# ============================================================================
+# all:
+#   vars:
+#     # Example: NTP servers for all environments
+#     ntp_servers:
+#       - 0.pool.ntp.org
+#       - 1.pool.ntp.org
+#
+#     # Example: DNS servers
+#     dns_servers:
+#       - 1.1.1.1
+#       - 8.8.8.8

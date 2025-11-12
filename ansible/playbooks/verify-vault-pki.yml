@@ -1,0 +1,642 @@
+---
+# ============================================================================
+# Verify Vault PKI Playbook
+# ============================================================================
+#
+# Purpose:
+#   Comprehensive verification of Vault PKI (Public Key Infrastructure)
+#
+# What This Checks:
+#   1. PKI secrets engines (pki/ and pki_int/)
+#   2. Root CA certificate
+#   3. Intermediate CA certificate
+#   4. PKI roles (ai-ops-agent, kubernetes, cert-manager)
+#   5. Certificate issuance functionality
+#   6. Certificate chain verification
+#   7. CRL (Certificate Revocation List) configuration
+#
+# Prerequisites:
+#   - Vault must be running and unsealed
+#   - VAULT_TOKEN environment variable must be set
+#   - PKI engines must be initialized
+#
+# Usage:
+#   # Set Vault token
+#   export VAULT_TOKEN=<your-root-token>
+#
+#   # Run verification
+#   ansible-playbook playbooks/verify-vault-pki.yml
+#
+#   # Verbose output
+#   ansible-playbook playbooks/verify-vault-pki.yml -e verbose_output=true
+#
+#   # Skip certificate issuance test
+#   ansible-playbook playbooks/verify-vault-pki.yml --skip-tags cert-test
+#
+# ============================================================================
+
+- name: Verify Vault PKI Configuration
+  hosts: localhost
+  gather_facts: no
+
+  # ==========================================================================
+  # Variables
+  # ==========================================================================
+  vars:
+    vault_namespace: vault
+    vault_pod: vault-0
+    vault_addr: http://127.0.0.1:8200
+
+    # PKI engines
+    pki_engines:
+      - path: pki/
+        type: root
+        name: Root CA
+
+      - path: pki_int/
+        type: intermediate
+        name: Intermediate CA
+
+    # PKI roles to verify
+    pki_roles:
+      - name: ai-ops-agent
+        expected_domains:
+          - corp.local
+          - cluster.local
+        max_ttl: 720h  # 30 days
+
+      - name: kubernetes
+        expected_domains:
+          - svc.cluster.local
+        max_ttl: 2160h  # 90 days
+
+      - name: cert-manager
+        expected_domains:
+          - cluster.local
+          - corp.local
+        max_ttl: 2160h  # 90 days
+
+    # Test certificate parameters
+    test_cert_cn: "ansible-test.corp.local"
+    test_cert_ttl: "1h"
+    test_cert_role: "ai-ops-agent"
+
+    # Verbose output
+    verbose_output: false
+
+  # ==========================================================================
+  # Pre-flight Checks
+  # ==========================================================================
+  pre_tasks:
+    - name: Check if VAULT_TOKEN is set
+      shell: echo "${VAULT_TOKEN:-}"
+      register: vault_token
+      changed_when: false
+      failed_when: vault_token.stdout == ""
+      tags: always
+
+    - name: Display playbook start message
+      debug:
+        msg: |
+          ═══════════════════════════════════════════════════════════
+          Vault PKI Verification
+          ═══════════════════════════════════════════════════════════
+
+          Checking:
+            • PKI secrets engines (pki/, pki_int/)
+            • Root CA and Intermediate CA certificates
+            • PKI roles and permissions
+            • Certificate issuance functionality
+            • CRL configuration
+
+          Vault: {{ vault_addr }}
+          Namespace: {{ vault_namespace }}
+          ═══════════════════════════════════════════════════════════
+      tags: always
+
+  # ==========================================================================
+  # Tasks
+  # ==========================================================================
+  tasks:
+
+    # ========================================================================
+    # Section 1: PKI Secrets Engines
+    # ========================================================================
+
+    - name: "═══ Section 1: PKI Secrets Engines ═══"
+      debug:
+        msg: "Verifying PKI secrets engines are enabled"
+      tags:
+        - engines
+        - pki
+
+    - name: List secrets engines
+      shell: |
+        kubectl exec -n {{ vault_namespace }} {{ vault_pod }} -- \
+          env VAULT_ADDR={{ vault_addr }} \
+          env VAULT_TOKEN={{ vault_token.stdout }} \
+          vault secrets list -format=json
+      register: secrets_engines
+      changed_when: false
+      tags:
+        - engines
+        - pki
+
+    - name: Parse secrets engines
+      set_fact:
+        engines_list: "{{ secrets_engines.stdout | from_json }}"
+      tags:
+        - engines
+        - pki
+
+    - name: Verify PKI engines enabled
+      assert:
+        that:
+          - "'{{ item.path }}' in engines_list"
+        fail_msg: "PKI engine '{{ item.path }}' not found"
+        success_msg: "✓ {{ item.name }} engine enabled ({{ item.path }})"
+      loop: "{{ pki_engines }}"
+      tags:
+        - engines
+        - pki
+
+    - name: Display PKI engine details
+      debug:
+        msg: |
+          PKI Engine: {{ item.path }}
+            Type: {{ engines_list[item.path].type }}
+            Description: {{ engines_list[item.path].description | default('N/A') }}
+      loop: "{{ pki_engines }}"
+      when: verbose_output | bool
+      tags:
+        - engines
+        - pki
+
+    # ========================================================================
+    # Section 2: Root CA Certificate
+    # ========================================================================
+
+    - name: "═══ Section 2: Root CA Certificate ═══"
+      debug:
+        msg: "Verifying Root CA certificate"
+      tags:
+        - root-ca
+        - pki
+
+    - name: Get Root CA certificate
+      shell: |
+        kubectl exec -n {{ vault_namespace }} {{ vault_pod }} -- \
+          env VAULT_ADDR={{ vault_addr }} \
+          env VAULT_TOKEN={{ vault_token.stdout }} \
+          vault read -field=certificate pki/cert/ca
+      register: root_ca_cert
+      changed_when: false
+      tags:
+        - root-ca
+        - pki
+
+    - name: Verify Root CA exists
+      assert:
+        that:
+          - root_ca_cert.stdout != ""
+          - "'BEGIN CERTIFICATE' in root_ca_cert.stdout"
+        fail_msg: "Root CA certificate not found or invalid"
+        success_msg: "✓ Root CA certificate exists"
+      tags:
+        - root-ca
+        - pki
+
+    - name: Parse Root CA certificate details
+      shell: |
+        echo "{{ root_ca_cert.stdout }}" | openssl x509 -noout -subject -issuer -dates
+      register: root_ca_details
+      changed_when: false
+      tags:
+        - root-ca
+        - pki
+
+    - name: Display Root CA details
+      debug:
+        msg: "{{ root_ca_details.stdout_lines }}"
+      tags:
+        - root-ca
+        - pki
+
+    - name: Verify Root CA is self-signed
+      shell: |
+        SUBJECT=$(echo "{{ root_ca_cert.stdout }}" | openssl x509 -noout -subject | sed 's/subject=//')
+        ISSUER=$(echo "{{ root_ca_cert.stdout }}" | openssl x509 -noout -issuer | sed 's/issuer=//')
+        [ "$SUBJECT" = "$ISSUER" ] && echo "self-signed" || echo "not-self-signed"
+      register: root_ca_self_signed
+      changed_when: false
+      tags:
+        - root-ca
+        - pki
+
+    - name: Assert Root CA is self-signed
+      assert:
+        that:
+          - "'self-signed' in root_ca_self_signed.stdout"
+        fail_msg: "Root CA is not self-signed (invalid configuration)"
+        success_msg: "✓ Root CA is self-signed (correct)"
+      tags:
+        - root-ca
+        - pki
+
+    # ========================================================================
+    # Section 3: Intermediate CA Certificate
+    # ========================================================================
+
+    - name: "═══ Section 3: Intermediate CA Certificate ═══"
+      debug:
+        msg: "Verifying Intermediate CA certificate"
+      tags:
+        - intermediate-ca
+        - pki
+
+    - name: Get Intermediate CA certificate
+      shell: |
+        kubectl exec -n {{ vault_namespace }} {{ vault_pod }} -- \
+          env VAULT_ADDR={{ vault_addr }} \
+          env VAULT_TOKEN={{ vault_token.stdout }} \
+          vault read -field=certificate pki_int/cert/ca
+      register: int_ca_cert
+      changed_when: false
+      tags:
+        - intermediate-ca
+        - pki
+
+    - name: Verify Intermediate CA exists
+      assert:
+        that:
+          - int_ca_cert.stdout != ""
+          - "'BEGIN CERTIFICATE' in int_ca_cert.stdout"
+        fail_msg: "Intermediate CA certificate not found or invalid"
+        success_msg: "✓ Intermediate CA certificate exists"
+      tags:
+        - intermediate-ca
+        - pki
+
+    - name: Parse Intermediate CA certificate details
+      shell: |
+        echo "{{ int_ca_cert.stdout }}" | openssl x509 -noout -subject -issuer -dates
+      register: int_ca_details
+      changed_when: false
+      tags:
+        - intermediate-ca
+        - pki
+
+    - name: Display Intermediate CA details
+      debug:
+        msg: "{{ int_ca_details.stdout_lines }}"
+      tags:
+        - intermediate-ca
+        - pki
+
+    - name: Verify Intermediate CA is NOT self-signed
+      shell: |
+        SUBJECT=$(echo "{{ int_ca_cert.stdout }}" | openssl x509 -noout -subject | sed 's/subject=//')
+        ISSUER=$(echo "{{ int_ca_cert.stdout }}" | openssl x509 -noout -issuer | sed 's/issuer=//')
+        [ "$SUBJECT" != "$ISSUER" ] && echo "signed-by-root" || echo "self-signed"
+      register: int_ca_signed
+      changed_when: false
+      tags:
+        - intermediate-ca
+        - pki
+
+    - name: Assert Intermediate CA is signed by Root
+      assert:
+        that:
+          - "'signed-by-root' in int_ca_signed.stdout"
+        fail_msg: "Intermediate CA appears to be self-signed (should be signed by Root)"
+        success_msg: "✓ Intermediate CA is signed by Root CA (correct)"
+      tags:
+        - intermediate-ca
+        - pki
+
+    # ========================================================================
+    # Section 4: Certificate Chain Verification
+    # ========================================================================
+
+    - name: "═══ Section 4: Certificate Chain Verification ═══"
+      debug:
+        msg: "Verifying certificate chain (Root → Intermediate)"
+      tags:
+        - chain
+        - pki
+
+    - name: Create CA bundle
+      shell: |
+        cat <<EOF > /tmp/ca_bundle.pem
+        {{ int_ca_cert.stdout }}
+        {{ root_ca_cert.stdout }}
+        EOF
+      changed_when: false
+      tags:
+        - chain
+        - pki
+
+    - name: Verify certificate chain
+      shell: |
+        echo "{{ int_ca_cert.stdout }}" > /tmp/intermediate.pem
+        echo "{{ root_ca_cert.stdout }}" > /tmp/root.pem
+        openssl verify -CAfile /tmp/root.pem /tmp/intermediate.pem
+      register: chain_verify
+      changed_when: false
+      failed_when: false
+      tags:
+        - chain
+        - pki
+
+    - name: Assert certificate chain is valid
+      assert:
+        that:
+          - chain_verify.rc == 0
+          - "'OK' in chain_verify.stdout"
+        fail_msg: "Certificate chain verification failed"
+        success_msg: "✓ Certificate chain is valid (Intermediate signed by Root)"
+      tags:
+        - chain
+        - pki
+
+    - name: Clean up temporary certificate files
+      file:
+        path: "{{ item }}"
+        state: absent
+      loop:
+        - /tmp/ca_bundle.pem
+        - /tmp/intermediate.pem
+        - /tmp/root.pem
+      changed_when: false
+      tags:
+        - chain
+        - pki
+
+    # ========================================================================
+    # Section 5: PKI Roles Verification
+    # ========================================================================
+
+    - name: "═══ Section 5: PKI Roles Verification ═══"
+      debug:
+        msg: "Verifying PKI roles configuration"
+      tags:
+        - roles
+        - pki
+
+    - name: Check PKI roles exist
+      shell: |
+        kubectl exec -n {{ vault_namespace }} {{ vault_pod }} -- \
+          env VAULT_ADDR={{ vault_addr }} \
+          env VAULT_TOKEN={{ vault_token.stdout }} \
+          vault read pki_int/roles/{{ item.name }} -format=json
+      register: role_check
+      changed_when: false
+      failed_when: false
+      loop: "{{ pki_roles }}"
+      tags:
+        - roles
+        - pki
+
+    - name: Verify all roles exist
+      assert:
+        that:
+          - item.rc == 0
+        fail_msg: "Role '{{ (item.item).name }}' not found"
+        success_msg: "✓ Role '{{ (item.item).name }}' exists"
+      loop: "{{ role_check.results }}"
+      tags:
+        - roles
+        - pki
+
+    - name: Display role configurations
+      debug:
+        msg: |
+          Role: {{ (item.item).name }}
+            Allowed Domains: {{ (item.stdout | from_json).data.allowed_domains | join(', ') }}
+            Max TTL: {{ (item.stdout | from_json).data.max_ttl }}
+            Allow Subdomains: {{ (item.stdout | from_json).data.allow_subdomains }}
+      loop: "{{ role_check.results }}"
+      when:
+        - verbose_output | bool
+        - item.rc == 0
+      tags:
+        - roles
+        - pki
+
+    # ========================================================================
+    # Section 6: Certificate Issuance Test
+    # ========================================================================
+
+    - name: "═══ Section 6: Certificate Issuance Test ═══"
+      debug:
+        msg: "Testing certificate issuance with role '{{ test_cert_role }}'"
+      tags:
+        - cert-test
+        - pki
+
+    - name: Issue test certificate
+      shell: |
+        kubectl exec -n {{ vault_namespace }} {{ vault_pod }} -- \
+          env VAULT_ADDR={{ vault_addr }} \
+          env VAULT_TOKEN={{ vault_token.stdout }} \
+          vault write pki_int/issue/{{ test_cert_role }} \
+            common_name={{ test_cert_cn }} \
+            ttl={{ test_cert_ttl }} \
+            -format=json
+      register: test_cert
+      changed_when: false
+      failed_when: false
+      tags:
+        - cert-test
+        - pki
+
+    - name: Verify certificate issuance succeeded
+      assert:
+        that:
+          - test_cert.rc == 0
+        fail_msg: "Failed to issue test certificate"
+        success_msg: "✓ Successfully issued test certificate for {{ test_cert_cn }}"
+      tags:
+        - cert-test
+        - pki
+
+    - name: Parse test certificate details
+      shell: |
+        echo "{{ (test_cert.stdout | from_json).data.certificate }}" | \
+          openssl x509 -noout -subject -issuer -dates
+      register: test_cert_details
+      changed_when: false
+      when: test_cert.rc == 0
+      tags:
+        - cert-test
+        - pki
+
+    - name: Display test certificate details
+      debug:
+        msg: "{{ test_cert_details.stdout_lines }}"
+      when:
+        - test_cert.rc == 0
+        - verbose_output | bool
+      tags:
+        - cert-test
+        - pki
+
+    - name: Verify test certificate Common Name
+      assert:
+        that:
+          - test_cert_cn in test_cert_details.stdout
+        fail_msg: "Certificate CN mismatch"
+        success_msg: "✓ Certificate CN matches request"
+      when: test_cert.rc == 0
+      tags:
+        - cert-test
+        - pki
+
+    # ========================================================================
+    # Section 7: CRL Configuration
+    # ========================================================================
+
+    - name: "═══ Section 7: CRL Configuration ═══"
+      debug:
+        msg: "Verifying Certificate Revocation List configuration"
+      tags:
+        - crl
+        - pki
+
+    - name: Check CRL configuration
+      shell: |
+        kubectl exec -n {{ vault_namespace }} {{ vault_pod }} -- \
+          env VAULT_ADDR={{ vault_addr }} \
+          env VAULT_TOKEN={{ vault_token.stdout }} \
+          vault read pki_int/config/crl -format=json
+      register: crl_config
+      changed_when: false
+      failed_when: false
+      tags:
+        - crl
+        - pki
+
+    - name: Verify CRL is configured
+      assert:
+        that:
+          - crl_config.rc == 0
+        fail_msg: "CRL configuration not found"
+        success_msg: "✓ CRL is configured"
+      when: crl_config.rc == 0
+      tags:
+        - crl
+        - pki
+
+    - name: Display CRL configuration
+      debug:
+        msg: |
+          CRL Configuration:
+            Expiry: {{ (crl_config.stdout | from_json).data.expiry | default('N/A') }}
+            Disable: {{ (crl_config.stdout | from_json).data.disable | default('N/A') }}
+      when:
+        - verbose_output | bool
+        - crl_config.rc == 0
+      tags:
+        - crl
+        - pki
+
+    # ========================================================================
+    # Section 8: URL Configuration
+    # ========================================================================
+
+    - name: "═══ Section 8: URL Configuration ═══"
+      debug:
+        msg: "Verifying PKI URL configuration"
+      tags:
+        - urls
+        - pki
+
+    - name: Check Root CA URLs
+      shell: |
+        kubectl exec -n {{ vault_namespace }} {{ vault_pod }} -- \
+          env VAULT_ADDR={{ vault_addr }} \
+          env VAULT_TOKEN={{ vault_token.stdout }} \
+          vault read pki/config/urls -format=json
+      register: root_urls
+      changed_when: false
+      failed_when: false
+      tags:
+        - urls
+        - pki
+
+    - name: Check Intermediate CA URLs
+      shell: |
+        kubectl exec -n {{ vault_namespace }} {{ vault_pod }} -- \
+          env VAULT_ADDR={{ vault_addr }} \
+          env VAULT_TOKEN={{ vault_token.stdout }} \
+          vault read pki_int/config/urls -format=json
+      register: int_urls
+      changed_when: false
+      failed_when: false
+      tags:
+        - urls
+        - pki
+
+    - name: Verify URLs are configured
+      assert:
+        that:
+          - root_urls.rc == 0
+          - int_urls.rc == 0
+        fail_msg: "URL configuration missing"
+        success_msg: "✓ PKI URLs configured"
+      tags:
+        - urls
+        - pki
+
+    - name: Display URL configuration
+      debug:
+        msg: |
+          Root CA URLs:
+            Issuing: {{ (root_urls.stdout | from_json).data.issuing_certificates | default([]) }}
+            CRL: {{ (root_urls.stdout | from_json).data.crl_distribution_points | default([]) }}
+
+          Intermediate CA URLs:
+            Issuing: {{ (int_urls.stdout | from_json).data.issuing_certificates | default([]) }}
+            CRL: {{ (int_urls.stdout | from_json).data.crl_distribution_points | default([]) }}
+      when: verbose_output | bool
+      tags:
+        - urls
+        - pki
+
+  # ==========================================================================
+  # Post-flight Summary
+  # ==========================================================================
+  post_tasks:
+    - name: Display verification summary
+      debug:
+        msg: |
+          ═══════════════════════════════════════════════════════════
+          Vault PKI Verification Complete
+          ═══════════════════════════════════════════════════════════
+
+          PKI Status:
+            ✓ PKI engines: pki/ (Root), pki_int/ (Intermediate)
+            ✓ Root CA: Self-signed, valid
+            ✓ Intermediate CA: Signed by Root, valid
+            ✓ Certificate chain: Valid
+            ✓ PKI roles: {{ pki_roles | length }} roles configured
+            ✓ Certificate issuance: Working
+            ✓ CRL: Configured
+
+          Roles Available:
+          {% for role in pki_roles %}
+            • {{ role.name }} (max TTL: {{ role.max_ttl }})
+          {% endfor %}
+
+          Test Certificate Issued:
+            CN: {{ test_cert_cn }}
+            TTL: {{ test_cert_ttl }}
+            Role: {{ test_cert_role }}
+
+          Next Steps:
+            1. Integration with cert-manager (Day 5)
+            2. Automatic certificate issuance for services
+            3. Certificate lifecycle automation
+
+          ═══════════════════════════════════════════════════════════
+      tags: always

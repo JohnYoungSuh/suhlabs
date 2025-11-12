@@ -194,11 +194,17 @@ runner-up: cert-manager-up runner-token
 	helm repo add actions-runner-controller https://actions-runner-controller.github.io/actions-runner-controller || true
 	helm repo update
 	helm install arc \
+	make runner-wait
 		--namespace github-runner --create-namespace \
 		actions-runner-controller/actions-runner-controller \
 		--set authSecret.github_token=$$(kubectl get secret github-token -n github-runner -o jsonpath='{.data.token}' | base64 -d)
 	@echo "Deploying runner for your repo..."
 	kubectl apply -f infra/github-runner/runner.yaml
+
+runner-wait:
+	@echo "${GREEN}Waiting for Actions Runner Controller webhook...${RESET}"
+	sleep 30
+	kubectl wait --for=condition=ready pod -l app.kubernetes.io/name=actions-runner-controller -n github-runner --timeout=120s
 
 runner-down:
 	@echo "${GREEN}Removing GitHub Actions runners...${RESET}"

@@ -302,5 +302,167 @@ clean:
 	$(MAKE) dev-down
 
 # -----------------------------------------------------------------------------
+# cert-manager Installation with Full Validation
+# -----------------------------------------------------------------------------
+.PHONY: cert-manager-up cert-manager-down cert-validate
+
+cert-manager-up:
+	@echo "${GREEN}Installing cert-manager...${RESET}"
+	kubectl apply -f https://github.com/cert-manager/cert-manager/releases/download/v1.13.0/cert-manager.yaml
+	@echo "Waiting for cert-manager CRDs to be established..."
+	kubectl wait --for condition=established --timeout=120s \
+		crd/certificates.cert-manager.io \
+		crd/issuers.cert-manager.io \
+		crd/clusterissuers.cert-manager.io
+	@echo "Waiting for cert-manager pods to be ready..."
+	kubectl wait --namespace cert-manager \
+		--for=condition=ready pod \
+		--selector=app.kubernetes.io/instance=cert-manager \
+		--timeout=120s
+	@echo "Waiting for webhook to be ready..."
+	kubectl wait --namespace cert-manager \
+		--for=condition=ready pod \
+		--selector=app.kubernetes.io/name=webhook \
+		--timeout=120s
+	@echo "Verifying webhook registration..."
+	@for i in 1 2 3 4 5; do \
+		if kubectl get validatingwebhookconfigurations.admissionregistration.k8s.io cert-manager-webhook >/dev/null 2>&1; then \
+			echo "✓ Webhook registered and operational"; \
+			break; \
+		fi; \
+		echo "Waiting for webhook registration ($$i/5)..."; \
+		sleep 5; \
+	done
+	@echo "${GREEN}✓ cert-manager fully operational${RESET}"
+
+cert-manager-down:
+	@echo "${YELLOW}Removing cert-manager...${RESET}"
+	kubectl delete -f https://github.com/cert-manager/cert-manager/releases/download/v1.13.0/cert-manager.yaml || true
+
+cert-validate:
+	@echo "${GREEN}Validating Certificates and Secrets...${RESET}"
+	@CERTS=$$(kubectl get certificates -n github-runner -o name 2>/dev/null | wc -l); \
+	if [ $$CERTS -eq 0 ]; then \
+		echo "No certificates found (OK if runner not deployed yet)"; \
+		exit 0; \
+	fi; \
+	for cert in $$(kubectl get certificates -n github-runner -o name); do \
+		echo "Checking $$cert..."; \
+		SECRET_NAME=$$(kubectl get $$cert -n github-runner -o jsonpath='{.spec.secretName}' 2>/dev/null); \
+		if [ -z "$$SECRET_NAME" ]; then \
+			echo "  ⚠️  Certificate has no secretName"; \
+			continue; \
+		fi; \
+		echo "  Waiting for Certificate ready condition..."; \
+		if ! kubectl wait --for=condition=ready $$cert -n github-runner --timeout=60s 2>/dev/null; then \
+			echo "  ❌ Certificate not ready after 60s"; \
+			exit 1; \
+		fi; \
+		echo "  Checking Secret $$SECRET_NAME exists..."; \
+		if ! kubectl get secret $$SECRET_NAME -n github-runner >/dev/null 2>&1; then \
+			echo "  ❌ Secret $$SECRET_NAME not found"; \
+			exit 1; \
+		fi; \
+		echo "  Validating tls.crt is non-empty..."; \
+		TLS_CRT=$$(kubectl get secret $$SECRET_NAME -n github-runner -o jsonpath='{.data.tls\.crt}' 2>/dev/null); \
+		if [ -z "$$TLS_CRT" ]; then \
+			echo "  ❌ tls.crt is empty - triggering re-issuance"; \
+			kubectl delete secret $$SECRET_NAME -n github-runner 2>/dev/null || true; \
+			kubectl annotate $$cert -n github-runner cert-manager.io/issue-temporary-certificate- --overwrite; \
+			sleep 15; \
+			if ! kubectl wait --for=condition=ready $$cert -n github-runner --timeout=90s; then \
+				echo "  ❌ Re-issuance failed"; \
+				exit 1; \
+			fi; \
+			TLS_CRT=$$(kubectl get secret $$SECRET_NAME -n github-runner -o jsonpath='{.data.tls\.crt}'); \
+		fi; \
+		echo "  Verifying valid X.509 certificate..."; \
+		if ! echo "$$TLS_CRT" | base64 -d | openssl x509 -noout -text >/dev/null 2>&1; then \
+			echo "  ❌ Invalid X.509 certificate"; \
+			exit 1; \
+		fi; \
+		echo "  ✓ Certificate validated"; \
+	done
+	@echo "${GREEN}✓ All certificates validated${RESET}"
+
+# -----------------------------------------------------------------------------
+# GitHub Actions Runner with Proper Sequencing
+# -----------------------------------------------------------------------------
+.PHONY: runner-token runner-up runner-down runner-status
+
+runner-token:
+	@echo "${GREEN}Creating GitHub token secret...${RESET}"
+	@if kubectl get secret github-token -n github-runner >/dev/null 2>&1; then \
+		echo "Token secret already exists"; \
+	else \
+		echo "Enter your GitHub Personal Access Token (scopes: repo, workflow, admin:org):"; \
+		read -s TOKEN; \
+		kubectl create namespace github-runner 2>/dev/null || true; \
+		kubectl create secret generic github-token \
+			--namespace=github-runner \
+			--from-literal=token=$$TOKEN; \
+		echo "✓ Token secret created"; \
+	fi
+
+runner-up: cert-manager-up runner-token
+	@echo "${GREEN}Installing Actions Runner Controller...${RESET}"
+	@echo "Adding Helm repository..."
+	helm repo add actions-runner-controller \
+		https://actions-runner-controller.github.io/actions-runner-controller 2>/dev/null || true
+	helm repo update
+	@echo "Installing ARC chart (this may take 2-3 minutes)..."
+	helm install arc \
+		--namespace github-runner \
+		--create-namespace \
+		--timeout 10m \
+		--wait \
+		--wait-for-jobs \
+		actions-runner-controller/actions-runner-controller \
+		--set authSecret.github_token=$$(kubectl get secret github-token -n github-runner -o jsonpath='{.data.token}' | base64 -d)
+	@echo "Verifying ARC controller is ready..."
+	kubectl wait --namespace github-runner \
+		--for=condition=ready pod \
+		--selector=app.kubernetes.io/name=actions-runner-controller \
+		--timeout=120s
+	@echo "Waiting for webhook service endpoints..."
+	@for i in 1 2 3 4 5 6 7 8 9 10; do \
+		ENDPOINTS=$$(kubectl get endpoints -n github-runner arc-actions-runner-controller-webhook -o jsonpath='{.subsets[0].addresses[0].ip}' 2>/dev/null); \
+		if [ -n "$$ENDPOINTS" ]; then \
+			echo "✓ Webhook endpoints ready: $$ENDPOINTS"; \
+			break; \
+		fi; \
+		echo "Waiting for webhook endpoints ($$i/10)..."; \
+		sleep 10; \
+	done
+	@echo "Validating certificates..."
+	$(MAKE) cert-validate
+	@echo "Deploying runner manifest..."
+	kubectl apply -f infra/github-runner/runner.yaml
+	@echo "${GREEN}✓ Runner deployment complete${RESET}"
+	@echo ""
+	@echo "Check runner status:"
+	@echo "  kubectl get runners -n github-runner"
+	@echo "  kubectl get pods -n github-runner"
+
+runner-down:
+	@echo "${YELLOW}Removing GitHub Actions runners...${RESET}"
+	kubectl delete -f infra/github-runner/runner.yaml 2>/dev/null || true
+	helm uninstall arc -n github-runner 2>/dev/null || true
+	kubectl delete namespace github-runner 2>/dev/null || true
+	@echo "✓ Runner removed"
+
+runner-status:
+	@echo "=== GitHub Runner Status ==="
+	@echo ""
+	@echo "Runners:"
+	@kubectl get runners -n github-runner 2>/dev/null || echo "  No runners found"
+	@echo ""
+	@echo "Pods:"
+	@kubectl get pods -n github-runner 2>/dev/null || echo "  No pods found"
+	@echo ""
+	@echo "Certificates:"
+	@kubectl get certificates -n github-runner 2>/dev/null || echo "  No certificates found"
+
+# -----------------------------------------------------------------------------
 # End of Makefile
 # -----------------------------------------------------------------------------

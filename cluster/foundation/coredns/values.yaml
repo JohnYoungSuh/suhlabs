@@ -3,6 +3,14 @@
 # Foundation DNS Service for Kubernetes
 # ============================================================================
 
+# Required Helm metadata
+commonLabels:
+  app.kubernetes.io/managed-by: Helm
+
+commonAnnotations:
+  meta.helm.sh/release-name: coredns
+  meta.helm.sh/release-namespace: kube-system
+
 # Service configuration
 service:
   name: coredns

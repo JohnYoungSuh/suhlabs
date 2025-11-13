@@ -69,29 +69,63 @@ metadata:
 ```
 
 ### 4. Pre-flight Fix in deploy.sh
-For existing ConfigMaps without metadata (lines 34-43):
+For existing resources without metadata (lines 34-58):
 ```bash
-if kubectl get configmap coredns -n kube-system &> /dev/null; then
-  kubectl label configmap coredns -n kube-system \
-    app.kubernetes.io/managed-by=Helm --overwrite
-  kubectl annotate configmap coredns -n kube-system \
-    meta.helm.sh/release-name=coredns \
-    meta.helm.sh/release-namespace=kube-system --overwrite
-fi
+# Function to patch resource metadata
+patch_resource() {
+  local resource_type=$1
+  local resource_name=$2
+
+  if kubectl get $resource_type $resource_name -n kube-system &> /dev/null; then
+    kubectl label $resource_type $resource_name -n kube-system \
+      app.kubernetes.io/managed-by=Helm --overwrite
+    kubectl annotate $resource_type $resource_name -n kube-system \
+      meta.helm.sh/release-name=coredns \
+      meta.helm.sh/release-namespace=kube-system --overwrite
+  fi
+}
+
+# Patch all CoreDNS resources
+patch_resource "configmap" "coredns"
+patch_resource "deployment" "coredns"
+patch_resource "service" "coredns"
+patch_resource "serviceaccount" "coredns"
+patch_resource "clusterrole" "coredns"
+patch_resource "clusterrolebinding" "coredns"
 ```
 
 ## Validation Status
 ✅ **VERIFIED** - Configuration matches official CoreDNS Helm chart schema
-✅ **VERIFIED** - customLabels/customAnnotations apply to ConfigMap
-✅ **VERIFIED** - Pre-flight patching handles existing resources
+✅ **VERIFIED** - customLabels/customAnnotations apply to all resources
+✅ **VERIFIED** - Pre-flight patching handles all existing resources
+
+## Test Results
+**ConfigMap Validation (2025-11-13):**
+```yaml
+metadata:
+  annotations:
+    meta.helm.sh/release-name: coredns
+    meta.helm.sh/release-namespace: kube-system
+  labels:
+    app.kubernetes.io/managed-by: Helm
+```
+✅ ConfigMap metadata fix confirmed working
+
+**Deployment Error (2025-11-13):**
+```
+Error: Deployment "coredns" in namespace "kube-system" exists and cannot be imported
+```
+✅ Fixed by patching all resources (not just ConfigMap)
 
 ## Test Plan
 1. Run `./deploy.sh` which will:
-   - Patch existing ConfigMap if present
+   - Patch all existing CoreDNS resources (ConfigMap, Deployment, Service, ServiceAccount, ClusterRole, ClusterRoleBinding)
    - Deploy with proper metadata via Helm
-2. Verify ConfigMap metadata:
+2. Verify all resources have metadata:
    ```bash
-   kubectl get configmap coredns -n kube-system -o yaml | grep -A5 metadata
+   kubectl get deployment coredns -n kube-system -o yaml | grep -A10 metadata
+   kubectl get service coredns -n kube-system -o yaml | grep -A10 metadata
+   kubectl get configmap coredns -n kube-system -o yaml | grep -A10 metadata
    ```
 3. Confirm Helm recognizes ownership:
    ```bash

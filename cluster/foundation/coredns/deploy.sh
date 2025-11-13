@@ -31,31 +31,24 @@ echo -e "${YELLOW}Adding CoreDNS Helm repository...${NC}"
 helm repo add coredns https://coredns.github.io/helm
 helm repo update
 
-# Fix existing CoreDNS resources metadata if they exist
-echo -e "${YELLOW}Checking for existing CoreDNS resources...${NC}"
+# Clean up existing CoreDNS resources to avoid selector conflicts
+echo -e "${YELLOW}Checking for existing CoreDNS installation...${NC}"
 
-# Function to patch resource metadata
-patch_resource() {
-  local resource_type=$1
-  local resource_name=$2
+if kubectl get deployment coredns -n kube-system &> /dev/null; then
+  echo -e "${YELLOW}Found existing CoreDNS deployment${NC}"
+  echo -e "${YELLOW}Removing existing CoreDNS to avoid immutable selector conflicts...${NC}"
+  echo -e "${RED}Warning: This will cause temporary DNS disruption!${NC}"
 
-  if kubectl get $resource_type $resource_name -n kube-system &> /dev/null; then
-    echo -e "${YELLOW}Patching $resource_type/$resource_name with Helm metadata...${NC}"
-    kubectl label $resource_type $resource_name -n kube-system \
-      app.kubernetes.io/managed-by=Helm --overwrite
-    kubectl annotate $resource_type $resource_name -n kube-system \
-      meta.helm.sh/release-name=coredns \
-      meta.helm.sh/release-namespace=kube-system --overwrite
-  fi
-}
+  # Delete the deployment (pods will be recreated by Helm immediately)
+  kubectl delete deployment coredns -n kube-system --ignore-not-found=true
 
-# Patch all CoreDNS resources
-patch_resource "configmap" "coredns"
-patch_resource "deployment" "coredns"
-patch_resource "service" "coredns"
-patch_resource "serviceaccount" "coredns"
-patch_resource "clusterrole" "coredns"
-patch_resource "clusterrolebinding" "coredns"
+  # Delete other resources that might conflict
+  kubectl delete service coredns -n kube-system --ignore-not-found=true
+  kubectl delete configmap coredns -n kube-system --ignore-not-found=true
+  kubectl delete serviceaccount coredns -n kube-system --ignore-not-found=true
+
+  echo -e "${GREEN}Existing CoreDNS resources removed${NC}"
+fi
 
 # Install CoreDNS
 echo -e "${YELLOW}Installing CoreDNS...${NC}"

@@ -31,16 +31,31 @@ echo -e "${YELLOW}Adding CoreDNS Helm repository...${NC}"
 helm repo add coredns https://coredns.github.io/helm
 helm repo update
 
-# Fix existing ConfigMap metadata if it exists
-echo -e "${YELLOW}Checking for existing CoreDNS ConfigMap...${NC}"
-if kubectl get configmap coredns -n kube-system &> /dev/null; then
-  echo -e "${YELLOW}Patching existing ConfigMap with Helm metadata...${NC}"
-  kubectl label configmap coredns -n kube-system \
-    app.kubernetes.io/managed-by=Helm --overwrite
-  kubectl annotate configmap coredns -n kube-system \
-    meta.helm.sh/release-name=coredns \
-    meta.helm.sh/release-namespace=kube-system --overwrite
-fi
+# Fix existing CoreDNS resources metadata if they exist
+echo -e "${YELLOW}Checking for existing CoreDNS resources...${NC}"
+
+# Function to patch resource metadata
+patch_resource() {
+  local resource_type=$1
+  local resource_name=$2
+
+  if kubectl get $resource_type $resource_name -n kube-system &> /dev/null; then
+    echo -e "${YELLOW}Patching $resource_type/$resource_name with Helm metadata...${NC}"
+    kubectl label $resource_type $resource_name -n kube-system \
+      app.kubernetes.io/managed-by=Helm --overwrite
+    kubectl annotate $resource_type $resource_name -n kube-system \
+      meta.helm.sh/release-name=coredns \
+      meta.helm.sh/release-namespace=kube-system --overwrite
+  fi
+}
+
+# Patch all CoreDNS resources
+patch_resource "configmap" "coredns"
+patch_resource "deployment" "coredns"
+patch_resource "service" "coredns"
+patch_resource "serviceaccount" "coredns"
+patch_resource "clusterrole" "coredns"
+patch_resource "clusterrolebinding" "coredns"
 
 # Install CoreDNS
 echo -e "${YELLOW}Installing CoreDNS...${NC}"

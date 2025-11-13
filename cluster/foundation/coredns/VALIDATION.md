@@ -133,17 +133,40 @@ spec.selector: Invalid value: field is immutable
 **Root Cause:** Deployment.spec.selector is immutable in Kubernetes. Cannot patch existing
 Deployment with different label selectors.
 
-**Solution:** Delete existing CoreDNS resources and let Helm create fresh deployment.
-- Faster than attempting to patch immutable fields
-- Unavoidable for selector changes
-- Brief DNS disruption during transition
-✅ Fixed by deleting existing resources before Helm install
+**Solution:** Two approaches implemented:
+1. **Development Mode** (default): Delete existing resources and redeploy
+   - Faster than attempting to patch immutable fields
+   - Brief DNS disruption (~5-15s) during transition
+   - Command: `./deploy.sh`
+
+2. **Production Mode** (--production flag): Blue-green deployment
+   - Zero-downtime deployment
+   - Deploys new alongside old, then switches traffic
+   - Verifies health before switching
+   - Command: `./deploy.sh --production`
+
+✅ Fixed by providing both fast (dev) and safe (production) deployment strategies
+📘 See [DEPLOYMENT_STRATEGIES.md](./DEPLOYMENT_STRATEGIES.md) for details
 
 ## Test Plan
+
+### For Development/Homelab (Fast Mode)
 1. Run `./deploy.sh` which will:
    - Delete existing CoreDNS resources (to avoid immutable field conflicts)
    - Deploy fresh CoreDNS via Helm with proper metadata and configuration
-   - Note: Brief DNS disruption during transition
+   - Note: Brief DNS disruption (~5-15s) during transition
+
+### For Production (Zero-Downtime Mode)
+1. Run `./deploy.sh --production` which will:
+   - Deploy new CoreDNS (coredns-new) alongside existing
+   - Verify new deployment health
+   - Test new DNS functionality
+   - Switch Service selector to new deployment
+   - Remove old deployment
+   - Rename new to standard name
+   - Note: Zero DNS disruption
+
+### Verification (Both Modes)
 2. Verify all resources have metadata:
    ```bash
    kubectl get deployment coredns -n kube-system -o yaml | grep -A10 metadata

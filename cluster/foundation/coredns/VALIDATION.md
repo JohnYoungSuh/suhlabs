@@ -148,6 +148,26 @@ Deployment with different label selectors.
 ✅ Fixed by providing both fast (dev) and safe (production) deployment strategies
 📘 See [DEPLOYMENT_STRATEGIES.md](./DEPLOYMENT_STRATEGIES.md) for details
 
+**Zone File Path Error (2025-11-13):**
+```
+[ERROR] plugin/file: Failed to open zone "corp.local." in "/etc/coredns/zones/corp.local.db":
+open /etc/coredns/zones/corp.local.db: no such file or directory
+```
+**Root Cause:** Helm chart mounts zone files at `/etc/coredns/` but Corefile referenced
+non-existent `/etc/coredns/zones/` subdirectory.
+
+**Diagnosis:** Found by checking pod logs: `kubectl logs -n kube-system -l app.kubernetes.io/name=coredns`
+
+**Solution:** Changed file plugin path in values.yaml:
+```yaml
+# Before (wrong):
+parameters: /etc/coredns/zones/corp.local.db
+
+# After (correct):
+parameters: /etc/coredns/corp.local.db
+```
+✅ Fixed by correcting zone file mount path
+
 ## Test Plan
 
 ### For Development/Homelab (Fast Mode)

@@ -31,6 +31,17 @@ echo -e "${YELLOW}Adding CoreDNS Helm repository...${NC}"
 helm repo add coredns https://coredns.github.io/helm
 helm repo update
 
+# Fix existing ConfigMap metadata if it exists
+echo -e "${YELLOW}Checking for existing CoreDNS ConfigMap...${NC}"
+if kubectl get configmap coredns -n kube-system &> /dev/null; then
+  echo -e "${YELLOW}Patching existing ConfigMap with Helm metadata...${NC}"
+  kubectl label configmap coredns -n kube-system \
+    app.kubernetes.io/managed-by=Helm --overwrite
+  kubectl annotate configmap coredns -n kube-system \
+    meta.helm.sh/release-name=coredns \
+    meta.helm.sh/release-namespace=kube-system --overwrite
+fi
+
 # Install CoreDNS
 echo -e "${YELLOW}Installing CoreDNS...${NC}"
 helm upgrade --install coredns coredns/coredns \

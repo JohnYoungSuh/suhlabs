@@ -33,11 +33,8 @@ servers:
   # Cluster DNS (standard K8s)
   - zones:
       - zone: cluster.local
-        scheme: dns://
       - zone: in-addr.arpa
-        scheme: dns://
       - zone: ip6.arpa
-        scheme: dns://
     port: 53
     plugins:
       # Error logging
@@ -85,7 +82,6 @@ servers:
   # Custom corp.local zone
   - zones:
       - zone: corp.local
-        scheme: dns://
     port: 53
     plugins:
       - name: errors

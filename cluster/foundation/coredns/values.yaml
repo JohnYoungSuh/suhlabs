@@ -14,7 +14,7 @@ customAnnotations:
 # Service configuration
 service:
   name: coredns
-  clusterIP: 10.96.0.10  # Standard K8s DNS IP
+  # clusterIP: 10.96.0.10  # Omitted to preserve existing Service IP during Helm adoption
 
 # Resource limits (good for dev)
 resources:

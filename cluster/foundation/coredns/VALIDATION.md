@@ -125,10 +125,25 @@ provided IP is already allocated
 ```
 ✅ Fixed by commenting out `clusterIP` in values.yaml to preserve existing IP
 
+**Immutable Selector Conflict (2025-11-13):**
+```
+Error: cannot patch "coredns" with kind Deployment: Deployment.apps "coredns" is invalid:
+spec.selector: Invalid value: field is immutable
+```
+**Root Cause:** Deployment.spec.selector is immutable in Kubernetes. Cannot patch existing
+Deployment with different label selectors.
+
+**Solution:** Delete existing CoreDNS resources and let Helm create fresh deployment.
+- Faster than attempting to patch immutable fields
+- Unavoidable for selector changes
+- Brief DNS disruption during transition
+✅ Fixed by deleting existing resources before Helm install
+
 ## Test Plan
 1. Run `./deploy.sh` which will:
-   - Patch all existing CoreDNS resources (ConfigMap, Deployment, Service, ServiceAccount, ClusterRole, ClusterRoleBinding)
-   - Deploy with proper metadata via Helm
+   - Delete existing CoreDNS resources (to avoid immutable field conflicts)
+   - Deploy fresh CoreDNS via Helm with proper metadata and configuration
+   - Note: Brief DNS disruption during transition
 2. Verify all resources have metadata:
    ```bash
    kubectl get deployment coredns -n kube-system -o yaml | grep -A10 metadata

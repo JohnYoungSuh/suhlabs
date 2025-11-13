@@ -90,7 +90,7 @@ servers:
     plugins:
       - name: errors
       - name: file
-        parameters: /etc/coredns/zones/corp.local.db
+        parameters: /etc/coredns/corp.local.db
       - name: log
 
 # Custom zone files

@@ -117,6 +117,14 @@ Error: Deployment "coredns" in namespace "kube-system" exists and cannot be impo
 ```
 ✅ Fixed by patching all resources (not just ConfigMap)
 
+**Service IP Allocation Error (2025-11-13):**
+```
+Error: failed to create resource: Service "coredns" is invalid: spec.clusterIPs:
+Invalid value: []string{"10.96.0.10"}: failed to allocate IP 10.96.0.10:
+provided IP is already allocated
+```
+✅ Fixed by commenting out `clusterIP` in values.yaml to preserve existing IP
+
 ## Test Plan
 1. Run `./deploy.sh` which will:
    - Patch all existing CoreDNS resources (ConfigMap, Deployment, Service, ServiceAccount, ClusterRole, ClusterRoleBinding)

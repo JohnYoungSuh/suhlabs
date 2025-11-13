@@ -1,0 +1,107 @@
+---
+# Test Certificate: Basic certificate issuance
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: test-cert
+  namespace: default
+spec:
+  # Secret where the certificate will be stored
+  secretName: test-cert-tls
+
+  # Use the Vault issuer we created
+  issuerRef:
+    name: vault-issuer
+    kind: ClusterIssuer
+    group: cert-manager.io
+
+  # Certificate details
+  commonName: test.corp.local
+  dnsNames:
+    - test.corp.local
+    - test.cluster.local
+
+  # Certificate lifetime (30 days per Day 4 PKI setup)
+  duration: 720h  # 30 days
+  renewBefore: 240h  # Renew 10 days before expiry
+
+  # Private key configuration
+  privateKey:
+    algorithm: RSA
+    size: 2048
+    rotationPolicy: Always
+
+  # Usage
+  usages:
+    - digital signature
+    - key encipherment
+    - server auth
+    - client auth
+---
+# Test Certificate: AI Ops Agent
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: ai-ops-agent-cert
+  namespace: default
+spec:
+  secretName: ai-ops-agent-tls
+
+  issuerRef:
+    name: vault-issuer-ai-ops
+    kind: ClusterIssuer
+    group: cert-manager.io
+
+  commonName: ai-ops-agent.default.svc.cluster.local
+  dnsNames:
+    - ai-ops-agent
+    - ai-ops-agent.default
+    - ai-ops-agent.default.svc
+    - ai-ops-agent.default.svc.cluster.local
+    - ai-ops-agent.corp.local
+
+  duration: 720h  # 30 days
+  renewBefore: 240h  # Renew 10 days before expiry
+
+  privateKey:
+    algorithm: RSA
+    size: 2048
+
+  usages:
+    - digital signature
+    - key encipherment
+    - server auth
+    - client auth
+---
+# Test Certificate: Kubernetes Services
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: kubernetes-service-cert
+  namespace: default
+spec:
+  secretName: kubernetes-service-tls
+
+  issuerRef:
+    name: vault-issuer-k8s
+    kind: ClusterIssuer
+    group: cert-manager.io
+
+  commonName: kubernetes.default.svc.cluster.local
+  dnsNames:
+    - kubernetes
+    - kubernetes.default
+    - kubernetes.default.svc
+    - kubernetes.default.svc.cluster.local
+
+  duration: 720h  # 30 days
+  renewBefore: 240h  # Renew 10 days before expiry
+
+  privateKey:
+    algorithm: RSA
+    size: 2048
+
+  usages:
+    - digital signature
+    - key encipherment
+    - server auth

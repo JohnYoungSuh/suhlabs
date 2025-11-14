@@ -17,3 +17,6 @@ bootstrap/*.log
 __pycache__/
 *.pyc
 .env
+
+# Vault secrets (NEVER commit!)
+cluster/foundation/vault/.vault-keys.json

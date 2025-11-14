@@ -11,10 +11,14 @@ customAnnotations:
   meta.helm.sh/release-name: coredns
   meta.helm.sh/release-namespace: kube-system
 
+# Kubernetes compatibility: Use legacy kube-dns label for service routing
+# This ensures the kube-dns service can find CoreDNS pods
+k8sAppLabelOverride: "kube-dns"
+
 # Service configuration
 service:
   name: coredns
-  clusterIP: 10.96.0.10  # Standard K8s DNS IP
+  # clusterIP: 10.96.0.10  # Omitted to preserve existing Service IP during Helm adoption
 
 # Resource limits (good for dev)
 resources:
@@ -32,12 +36,7 @@ replicaCount: 2
 servers:
   # Cluster DNS (standard K8s)
   - zones:
-      - zone: cluster.local
-        scheme: dns://
-      - zone: in-addr.arpa
-        scheme: dns://
-      - zone: ip6.arpa
-        scheme: dns://
+      - zone: .
     port: 53
     plugins:
       # Error logging
@@ -85,12 +84,11 @@ servers:
   # Custom corp.local zone
   - zones:
       - zone: corp.local
-        scheme: dns://
     port: 53
     plugins:
       - name: errors
       - name: file
-        parameters: /etc/coredns/zones/corp.local.db
+        parameters: /etc/coredns/corp.local.db
       - name: log
 
 # Custom zone files

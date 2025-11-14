@@ -9,13 +9,34 @@ Custom CoreDNS deployment with corp.local zone for the AI Ops Substrate project.
 3. **DNS Resolution** - Forward external queries to upstream DNS
 4. **Service Discovery** - Automatic DNS records for K8s services
 
+## Deployment Modes
+
+This deployment supports two strategies:
+
+### Development Mode (Default)
+Fast delete-and-redeploy with brief DNS disruption (~5-15 seconds):
+```bash
+./deploy.sh
+```
+
+### Production Mode
+Zero-downtime blue-green deployment (recommended for production):
+```bash
+./deploy.sh --production
+```
+
+📘 **See [DEPLOYMENT_STRATEGIES.md](./DEPLOYMENT_STRATEGIES.md) for detailed comparison and best practices.**
+
 ## Quick Start
 
 ```bash
 cd cluster/foundation/coredns
 
-# Deploy CoreDNS
+# For homelab/dev (fast with brief DNS outage)
 ./deploy.sh
+
+# For production (zero downtime)
+./deploy.sh --production
 
 # Verify deployment
 kubectl get pods -n kube-system -l k8s-app=coredns

@@ -18,6 +18,11 @@ __pycache__/
 *.pyc
 .env
 
+<<<<<<< HEAD
 # Extracted binaries (regenerate from tarballs)
 crictl
 k9s
+=======
+# Vault secrets (NEVER commit!)
+cluster/foundation/vault/.vault-keys.json
+>>>>>>> a152db6125472e979fb15b415f79011caf57d1ad

@@ -18,6 +18,28 @@ HashiCorp Vault deployment for secrets management and PKI (Public Key Infrastruc
 
 ## Quick Start
 
+### Option 1: Automated Bootstrap (Recommended)
+
+```bash
+cd cluster/foundation/vault
+
+# Deploy Vault
+./deploy.sh
+
+# Automated initialization and unsealing
+./vault-bootstrap.sh auto
+
+# Or use interactive menu
+./vault-bootstrap.sh
+```
+
+The bootstrap script will:
+- Initialize Vault and save keys/token to `.vault-keys.json`
+- Automatically unseal Vault with saved keys
+- Display root token for PKI setup
+
+### Option 2: Manual Setup
+
 ```bash
 cd cluster/foundation/vault
 
@@ -38,10 +60,14 @@ kubectl exec -n vault vault-0 -- vault operator unseal <unseal-key-3>
 
 # Verify Vault is unsealed
 kubectl exec -n vault vault-0 -- vault status
+```
 
+### After Vault is Unsealed
+
+```bash
 # Initialize PKI (after unsealing)
 cd ../vault-pki
-export VAULT_TOKEN=<root-token-from-init>
+export VAULT_TOKEN=<root-token-from-bootstrap>
 ./init-vault-pki.sh
 ```
 
@@ -115,6 +141,128 @@ Total Shares: 5
 Threshold: 3
 Unseal Progress: 0/3
 ```
+
+## Bootstrap Script (vault-bootstrap.sh)
+
+The `vault-bootstrap.sh` script automates initialization, unsealing, and sealing operations with secure key management.
+
+### Features
+
+- **Interactive Menu** - User-friendly menu for all operations
+- **Automatic Key Storage** - Saves unseal keys and root token to `.vault-keys.json`
+- **Auto Init+Unseal** - One command to initialize and unseal
+- **Status Checking** - Quick status overview with token display
+- **Seal/Unseal** - Easy seal/unseal operations
+
+### Usage
+
+**Interactive Menu:**
+```bash
+./vault-bootstrap.sh
+```
+
+**Command Line:**
+```bash
+# Initialize and unseal in one command
+./vault-bootstrap.sh auto
+
+# Individual commands
+./vault-bootstrap.sh init      # Initialize Vault
+./vault-bootstrap.sh unseal    # Unseal Vault
+./vault-bootstrap.sh seal      # Seal Vault
+./vault-bootstrap.sh status    # Show status
+./vault-bootstrap.sh token     # Show root token
+```
+
+### Interactive Menu Options
+
+```
+1) Initialize Vault (first time setup)
+2) Unseal Vault (unlock after restart)
+3) Seal Vault (lock Vault)
+4) Show Vault status
+5) Show root token
+6) Auto: Initialize + Unseal
+7) Exit
+```
+
+### Keys File (.vault-keys.json)
+
+The script stores unseal keys and root token in `.vault-keys.json`:
+
+```json
+{
+  "unseal_keys_b64": [
+    "key1...",
+    "key2...",
+    "key3...",
+    "key4...",
+    "key5..."
+  ],
+  "root_token": "hvs.xxxxx..."
+}
+```
+
+**Security Notes:**
+- File permissions set to `600` (owner read/write only)
+- **DO NOT commit this file to git** (add to `.gitignore`)
+- Backup this file securely
+- For production, use HSM or cloud KMS instead
+
+### Example: First Time Setup
+
+```bash
+# Deploy Vault
+./deploy.sh
+
+# Run automated bootstrap
+./vault-bootstrap.sh auto
+```
+
+**Output:**
+```
+[INFO] Vault Bootstrap Script
+[STEP] Initializing Vault...
+[SUCCESS] ✅ Vault initialized successfully!
+
+═══════════════════════════════════════════════════════════
+                  VAULT CREDENTIALS
+═══════════════════════════════════════════════════════════
+
+Unseal Keys:
+  Key 1: xxxxx...
+  Key 2: xxxxx...
+  Key 3: xxxxx...
+  Key 4: xxxxx...
+  Key 5: xxxxx...
+
+Root Token: hvs.xxxxx...
+
+═══════════════════════════════════════════════════════════
+
+[STEP] Unsealing Vault...
+[INFO] Using unseal key 1/3...
+[INFO] Unseal progress: 1/3
+[INFO] Using unseal key 2/3...
+[INFO] Unseal progress: 2/3
+[INFO] Using unseal key 3/3...
+[INFO] Unseal progress: 3/3
+[SUCCESS] ✅ Vault unsealed successfully!
+
+[STEP] Checking Vault status...
+[INFO] Initialized: ✅ Yes
+[SUCCESS] Sealed: 🔓 No (Vault is ready)
+[INFO] Root Token: hvs.xxxxx...
+```
+
+### Example: Unseal After Restart
+
+```bash
+# Vault automatically seals on pod restart
+./vault-bootstrap.sh unseal
+```
+
+The script will automatically read keys from `.vault-keys.json` and unseal Vault.
 
 ## Accessing Vault
 

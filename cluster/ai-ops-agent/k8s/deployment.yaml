@@ -24,6 +24,23 @@ spec:
         runAsUser: 1000
         fsGroup: 1000
 
+      # Init container: Wait for certificate to be issued
+      # Prevents race condition where pod tries to mount secret before cert-manager creates it
+      # Lesson learned from CoreDNS deployment - always wait for cert-manager!
+      initContainers:
+      - name: wait-for-certificate
+        image: bitnami/kubectl:1.28
+        command:
+        - sh
+        - -c
+        - |
+          echo "Waiting for certificate ai-ops-agent-cert to be ready..."
+          until kubectl get certificate ai-ops-agent-cert -n default -o jsonpath='{.status.conditions[?(@.type=="Ready")].status}' 2>/dev/null | grep -q "True"; do
+            echo "Certificate not ready yet, waiting 5 seconds..."
+            sleep 5
+          done
+          echo "Certificate is ready! Proceeding with pod startup."
+
       containers:
       - name: ai-ops-agent
         image: ai-ops-agent:0.1.0

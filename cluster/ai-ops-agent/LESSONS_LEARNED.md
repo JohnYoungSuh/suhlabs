@@ -228,3 +228,308 @@ This is the industry-standard pattern because:
 ---
 
 **Lesson learned the hard way**: When using cert-manager, ALWAYS wait for certificates before starting pods that mount them.
+
+---
+
+# Lessons Learned: Vault PKI DNS Name Validation
+
+## Problem
+
+**Certificate Request Failed**: Vault refused to sign certificate due to DNS names not matching allowed domains.
+
+### Error Message
+```
+Warning  SigningError  30m  cert-manager-certificaterequests-issuer-vault
+  Vault failed to sign certificate: failed to sign certificate by vault: Error making API request.
+
+URL: POST http://vault.vault.svc.cluster.local:8200/v1/pki_int/sign/ai-ops-agent
+Code: 400. Errors:
+
+* subject alternate name ai-ops-agent not allowed by this role
+```
+
+### Root Cause
+
+The Vault PKI role `ai-ops-agent` is configured with strict `allowed_domains`:
+
+```bash
+# From init-vault-pki.sh
+vault write pki_int/roles/ai-ops-agent \
+    allowed_domains="corp.local,cluster.local" \
+    allow_subdomains=true \
+    allow_glob_domains=false \
+    allow_bare_domains=false \     # ← Prevents bare hostnames!
+    allow_localhost=false
+```
+
+This configuration:
+- ✅ **Allows**: `*.corp.local` and `*.cluster.local`
+- ❌ **Denies**: Bare hostnames, partial domains, anything not matching allowed_domains
+
+The certificate requested:
+```yaml
+dnsNames:
+  - ai-ops-agent                            # ❌ Bare hostname - NOT ALLOWED
+  - ai-ops-agent.default                    # ❌ "default" is not an allowed domain
+  - ai-ops-agent.default.svc                # ❌ "svc" is not an allowed domain
+  - ai-ops-agent.default.svc.cluster.local  # ✅ Valid!
+  - ai-ops-agent.corp.local                 # ✅ Valid!
+```
+
+**Vault rejected the certificate** because 3 of 5 DNS names violated the role's allowed_domains policy.
+
+## Solution
+
+**Only request DNS names that match Vault PKI role allowed_domains:**
+
+```yaml
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: ai-ops-agent-cert
+spec:
+  # IMPORTANT: Only FQDNs matching Vault PKI role allowed_domains
+  # ai-ops-agent role allows: *.corp.local, *.cluster.local
+  commonName: ai-ops-agent.default.svc.cluster.local
+  dnsNames:
+    - ai-ops-agent.default.svc.cluster.local  # ✅ Subdomain of cluster.local
+    - ai-ops-agent.corp.local                  # ✅ Subdomain of corp.local
+```
+
+### Why This Matters
+
+**Kubernetes service DNS resolution works in layers:**
+
+```
+Short name:        ai-ops-agent              (resolves within same namespace)
+Namespace-scoped:  ai-ops-agent.default      (resolves within cluster)
+Service FQDN:      ai-ops-agent.default.svc  (resolves within cluster)
+Cluster FQDN:      ai-ops-agent.default.svc.cluster.local  (fully qualified)
+Corporate domain:  ai-ops-agent.corp.local   (for external access)
+```
+
+**For Vault PKI**, only the **fully qualified** names that match allowed_domains are valid:
+- ✅ `ai-ops-agent.default.svc.cluster.local` - Matches `*.cluster.local`
+- ✅ `ai-ops-agent.corp.local` - Matches `*.corp.local`
+- ❌ Short names like `ai-ops-agent` don't match any allowed domain
+
+## Checking Vault PKI Role Configuration
+
+Before creating a Certificate, always check what domains are allowed:
+
+```bash
+# Port forward to Vault
+kubectl port-forward -n vault svc/vault 8200:8200 &
+
+export VAULT_ADDR=http://localhost:8200
+export VAULT_TOKEN=<your-root-token>
+
+# Check role configuration
+vault read pki_int/roles/ai-ops-agent
+```
+
+**Key fields to check:**
+- `allowed_domains` - List of allowed domain suffixes
+- `allow_subdomains` - Can request subdomains (*.example.com)
+- `allow_bare_domains` - Can request bare domain (example.com)
+- `allow_glob_domains` - Can use wildcards (*.*.example.com)
+- `allow_localhost` - Can request localhost
+- `allow_any_name` - Can request any name (dangerous!)
+
+## Pattern: Match Certificate DNS Names to Vault PKI Role
+
+**Before requesting a certificate:**
+
+1. **Check Vault PKI role allowed_domains**
+   ```bash
+   vault read pki_int/roles/<role-name>
+   ```
+
+2. **Design DNS names that match**
+   - Use full FQDNs ending in allowed domains
+   - Avoid bare hostnames unless `allow_bare_domains=true`
+   - Avoid partial domains that don't match allowed_domains
+
+3. **Test with a single DNS name first**
+   ```yaml
+   dnsNames:
+     - myservice.corp.local  # Start with one valid name
+   ```
+
+4. **Expand after success**
+   ```yaml
+   dnsNames:
+     - myservice.corp.local
+     - myservice.default.svc.cluster.local
+   ```
+
+## Common Mistakes
+
+### Mistake 1: Including Short Hostnames
+
+```yaml
+# WRONG - Short hostname doesn't match allowed_domains
+dnsNames:
+  - myservice  # ❌ No domain suffix
+  - myservice.corp.local  # ✅ Valid
+```
+
+### Mistake 2: Partial Kubernetes Domains
+
+```yaml
+# WRONG - Partial domains don't match allowed_domains
+dnsNames:
+  - myservice.default        # ❌ "default" is not an allowed domain
+  - myservice.default.svc    # ❌ "svc" is not an allowed domain
+  - myservice.default.svc.cluster.local  # ✅ Valid - matches *.cluster.local
+```
+
+### Mistake 3: Assuming All Kubernetes DNS Names Work
+
+```yaml
+# WRONG - Not all Kubernetes DNS resolution paths are valid for Vault
+dnsNames:
+  - myservice                # ❌ Bare hostname
+  - myservice.default        # ❌ Not in allowed_domains
+  - myservice.default.svc    # ❌ Not in allowed_domains
+```
+
+**Correct**: Only use **fully qualified** names matching allowed_domains:
+```yaml
+dnsNames:
+  - myservice.default.svc.cluster.local  # ✅ Matches *.cluster.local
+```
+
+## Debugging Tips
+
+### Check Certificate Status
+
+```bash
+# Describe certificate for detailed errors
+kubectl describe certificate ai-ops-agent-cert
+
+# Look for signing errors
+kubectl get certificaterequest
+kubectl describe certificaterequest <name>
+```
+
+### Check cert-manager Logs
+
+```bash
+# View cert-manager logs for Vault errors
+kubectl logs -n cert-manager -l app.kubernetes.io/name=cert-manager | grep -i vault
+
+# Look for "not allowed by this role" errors
+kubectl logs -n cert-manager -l app.kubernetes.io/name=cert-manager | grep "not allowed"
+```
+
+### Test Manually with Vault CLI
+
+```bash
+# Test certificate request manually
+vault write pki_int/sign/ai-ops-agent \
+    common_name="ai-ops-agent.default.svc.cluster.local" \
+    alt_names="ai-ops-agent,ai-ops-agent.default" \
+    ttl="720h"
+
+# If it fails, Vault will tell you which DNS name is not allowed
+```
+
+## Prevention Checklist
+
+When creating certificates for Vault PKI:
+
+- [ ] Check Vault PKI role allowed_domains
+- [ ] Verify allow_subdomains, allow_bare_domains settings
+- [ ] Only use FQDNs matching allowed_domains in dnsNames
+- [ ] Avoid bare hostnames unless explicitly allowed
+- [ ] Test certificate request manually first
+- [ ] Check cert-manager logs after applying Certificate
+
+## Best Practices
+
+### 1. Document Allowed Domains in Certificate YAML
+
+```yaml
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: myservice-cert
+spec:
+  # IMPORTANT: PKI role 'myservice' allows: *.corp.local, *.cluster.local
+  # Do NOT add bare hostnames or partial domains
+  commonName: myservice.corp.local
+  dnsNames:
+    - myservice.corp.local
+    - myservice.default.svc.cluster.local
+```
+
+### 2. Create Restrictive PKI Roles
+
+```bash
+# Good: Restrictive role for production services
+vault write pki_int/roles/production \
+    allowed_domains="prod.corp.local" \
+    allow_subdomains=true \
+    allow_bare_domains=false \
+    allow_glob_domains=false
+
+# Bad: Overly permissive role
+vault write pki_int/roles/permissive \
+    allow_any_name=true  # ❌ Dangerous!
+```
+
+### 3. Test Before Deploying
+
+```bash
+# Create test certificate first
+kubectl apply -f - <<EOF
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: test-cert
+  namespace: default
+spec:
+  secretName: test-tls
+  issuerRef:
+    name: vault-issuer-ai-ops
+    kind: ClusterIssuer
+  commonName: test.corp.local
+  dnsNames:
+    - test.corp.local
+  duration: 1h
+EOF
+
+# Wait and check
+kubectl get certificate test-cert
+kubectl describe certificate test-cert
+```
+
+## Cost of This Lesson
+
+**Time wasted debugging**: ~20 minutes
+
+**Frustration level**: High - should have checked PKI role configuration first
+
+**Fix complexity**: Low - just remove invalid DNS names
+
+**Prevented by**: Reading the Vault PKI role configuration before creating Certificate
+
+## Related Issues
+
+This is similar to:
+- **CoreDNS Helm metadata** - Stricter validation in newer versions
+- **cert-manager RBAC** - Explicit permissions required for Kubernetes 1.24+
+- **Certificate mount race** - Another preventable issue
+
+**Pattern**: Always check prerequisites and constraints BEFORE applying manifests.
+
+## References
+
+- [Vault PKI Roles](https://developer.hashicorp.com/vault/api-docs/secret/pki#create-update-role)
+- [cert-manager Certificate DNS Names](https://cert-manager.io/docs/usage/certificate/#creating-certificate-resources)
+- [Kubernetes DNS for Services](https://kubernetes.io/docs/concepts/services-networking/dns-pod-service/)
+
+---
+
+**Lesson learned (again!)**: Always validate DNS names against Vault PKI role allowed_domains before requesting certificates.

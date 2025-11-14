@@ -42,7 +42,7 @@ spec:
     spec:
       initContainers:
       - name: wait-for-certificate
-        image: bitnami/kubectl:1.28
+        image: bitnami/kubectl:latest
         command:
         - sh
         - -c

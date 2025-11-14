@@ -74,7 +74,7 @@ spec:
       # Init container waits for certificate before main container starts
       initContainers:
       - name: wait-for-certificate
-        image: bitnami/kubectl:1.28
+        image: bitnami/kubectl:latest
         command:
         - sh
         - -c
@@ -142,7 +142,7 @@ spec:
     spec:
       initContainers:
       - name: wait-for-certificate
-        image: bitnami/kubectl:1.28
+        image: bitnami/kubectl:latest
         command: ['sh', '-c', 'until kubectl get certificate my-cert -o jsonpath="{.status.conditions[?(@.type==\"Ready\")].status}" | grep -q "True"; do sleep 5; done']
 
       containers:

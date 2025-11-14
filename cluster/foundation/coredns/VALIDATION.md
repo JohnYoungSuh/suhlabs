@@ -168,6 +168,27 @@ parameters: /etc/coredns/corp.local.db
 ```
 ✅ Fixed by correcting zone file mount path
 
+**Label Mismatch - DNS Connection Refused (2025-11-13):**
+```
+nslookup: write to '10.96.0.10': Connection refused
+;; connection timed out; no servers could be reached
+```
+**Root Cause:** CoreDNS Helm chart defaults to `k8s-app=coredns` label, but Kubernetes expects DNS pods to use legacy `k8s-app=kube-dns` label for service routing compatibility.
+
+**Diagnosis:**
+1. Checked service endpoints: `kubectl get endpoints coredns -n kube-system` → Empty
+2. Compared pod labels vs service selector → Mismatch found
+3. Used netshoot for network testing: `kubectl run -it --rm netshoot --image=nicolaka/netshoot -- bash`
+
+**Solution:** Added `k8sAppLabelOverride: "kube-dns"` to values.yaml
+```yaml
+# values.yaml
+k8sAppLabelOverride: "kube-dns"  # Use legacy kube-dns label for K8s compatibility
+```
+
+✅ Fixed by setting proper k8s-app label for Kubernetes DNS service compatibility
+📘 See [LESSONS_LEARNED.md](./LESSONS_LEARNED.md) for detailed troubleshooting guide
+
 ## Test Plan
 
 ### For Development/Homelab (Fast Mode)

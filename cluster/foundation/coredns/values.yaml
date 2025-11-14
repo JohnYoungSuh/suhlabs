@@ -11,6 +11,10 @@ customAnnotations:
   meta.helm.sh/release-name: coredns
   meta.helm.sh/release-namespace: kube-system
 
+# Kubernetes compatibility: Use legacy kube-dns label for service routing
+# This ensures the kube-dns service can find CoreDNS pods
+k8sAppLabelOverride: "kube-dns"
+
 # Service configuration
 service:
   name: coredns

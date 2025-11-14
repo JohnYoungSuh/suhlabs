@@ -112,11 +112,58 @@ log_info "✓ cert-manager ClusterIssuer found"
 echo ""
 
 # -----------------------------------------------------------------------------
-# Step 4: Apply Kubernetes manifests
+# Step 4: Apply Certificate and wait for it to be issued
 # -----------------------------------------------------------------------------
-log_step "Applying Kubernetes manifests..."
+log_step "Applying Certificate resource..."
 
 kubectl apply -f "${SCRIPT_DIR}/k8s/certificate.yaml"
+
+log_info "✓ Certificate resource created"
+echo ""
+
+# -----------------------------------------------------------------------------
+# Step 5: Wait for certificate to be issued
+# -----------------------------------------------------------------------------
+log_step "Waiting for certificate to be issued by cert-manager..."
+log_info "This prevents race condition where deployment tries to mount secret before it exists"
+
+timeout=120
+elapsed=0
+while [ $elapsed -lt $timeout ]; do
+    if kubectl get certificate ai-ops-agent-cert -n "$NAMESPACE" -o jsonpath='{.status.conditions[?(@.type=="Ready")].status}' 2>/dev/null | grep -q "True"; then
+        log_info "✓ Certificate issued successfully by Vault PKI"
+        break
+    fi
+    sleep 2
+    elapsed=$((elapsed + 2))
+    if [ $((elapsed % 10)) -eq 0 ]; then
+        echo -n "."
+    fi
+done
+echo ""
+
+if [ $elapsed -ge $timeout ]; then
+    log_error "Certificate not ready after ${timeout}s"
+    log_error "Check certificate status:"
+    echo "  kubectl describe certificate ai-ops-agent-cert -n $NAMESPACE"
+    echo "  kubectl get certificaterequest -n $NAMESPACE"
+    exit 1
+fi
+
+# Verify secret exists
+if ! kubectl get secret ai-ops-agent-tls -n "$NAMESPACE" &>/dev/null; then
+    log_error "Certificate shows Ready but secret not found!"
+    exit 1
+fi
+
+log_info "✓ Secret ai-ops-agent-tls exists and is ready to mount"
+echo ""
+
+# -----------------------------------------------------------------------------
+# Step 6: Apply Service and Deployment
+# -----------------------------------------------------------------------------
+log_step "Applying Service and Deployment manifests..."
+
 kubectl apply -f "${SCRIPT_DIR}/k8s/service.yaml"
 kubectl apply -f "${SCRIPT_DIR}/k8s/deployment.yaml"
 
@@ -124,33 +171,7 @@ log_info "✓ Manifests applied"
 echo ""
 
 # -----------------------------------------------------------------------------
-# Step 5: Wait for certificate to be issued
-# -----------------------------------------------------------------------------
-log_step "Waiting for certificate to be issued..."
-
-timeout=60
-elapsed=0
-while [ $elapsed -lt $timeout ]; do
-    if kubectl get certificate ai-ops-agent-cert -n "$NAMESPACE" -o jsonpath='{.status.conditions[?(@.type=="Ready")].status}' 2>/dev/null | grep -q "True"; then
-        log_info "✓ Certificate issued successfully"
-        break
-    fi
-    sleep 2
-    elapsed=$((elapsed + 2))
-    echo -n "."
-done
-echo ""
-
-if [ $elapsed -ge $timeout ]; then
-    log_warn "Certificate not ready after ${timeout}s"
-    log_warn "Check certificate status:"
-    echo "  kubectl describe certificate ai-ops-agent-cert -n $NAMESPACE"
-fi
-
-echo ""
-
-# -----------------------------------------------------------------------------
-# Step 6: Wait for deployment to be ready
+# Step 7: Wait for deployment to be ready
 # -----------------------------------------------------------------------------
 log_step "Waiting for deployment to be ready..."
 

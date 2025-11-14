@@ -24,8 +24,11 @@ spec:
         runAsUser: 1000
         fsGroup: 1000
 
-      # Init container: Wait for certificate to be issued
-      # Prevents race condition where pod tries to mount secret before cert-manager creates it
+      # Init container: Wait for certificate to be issued and mounted
+      # Three-layer defense against race conditions:
+      # 1. deploy.sh waits for Certificate Ready status
+      # 2. This init container checks Certificate Ready status
+      # 3. This init container verifies file is actually mounted
       # Lesson learned from CoreDNS deployment - always wait for cert-manager!
       initContainers:
       - name: wait-for-certificate
@@ -39,7 +42,18 @@ spec:
             echo "Certificate not ready yet, waiting 5 seconds..."
             sleep 5
           done
-          echo "Certificate is ready! Proceeding with pod startup."
+          echo "Certificate is ready!"
+
+          echo "Waiting for certificate file to be mounted..."
+          until [ -f /etc/tls/tls.crt ]; do
+            echo "Waiting for cert file..."
+            sleep 2
+          done
+          echo "Certificate file mounted! Proceeding with pod startup."
+        volumeMounts:
+        - name: tls
+          mountPath: /etc/tls
+          readOnly: true
 
       containers:
       - name: ai-ops-agent

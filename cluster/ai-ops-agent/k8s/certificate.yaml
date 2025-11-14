@@ -16,13 +16,13 @@ spec:
     group: cert-manager.io
 
   # Certificate details
+  # IMPORTANT: Only FQDNs matching Vault PKI role allowed_domains
+  # ai-ops-agent role allows: *.corp.local, *.cluster.local
+  # Bare hostnames and partial domains are NOT allowed
   commonName: ai-ops-agent.default.svc.cluster.local
   dnsNames:
-    - ai-ops-agent
-    - ai-ops-agent.default
-    - ai-ops-agent.default.svc
-    - ai-ops-agent.default.svc.cluster.local
-    - ai-ops-agent.corp.local
+    - ai-ops-agent.default.svc.cluster.local  # Kubernetes service FQDN
+    - ai-ops-agent.corp.local                  # Corporate domain FQDN
 
   # 30-day certificate with auto-renewal
   duration: 720h        # 30 days

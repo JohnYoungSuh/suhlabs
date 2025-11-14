@@ -1,0 +1,103 @@
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: netshoot
+  namespace: default
+  labels:
+    app: netshoot
+    purpose: troubleshooting
+spec:
+  # Keep pod running indefinitely for debugging
+  containers:
+  - name: netshoot
+    image: nicolaka/netshoot:latest
+    imagePullPolicy: Always
+
+    # Keep container running
+    command:
+    - sleep
+    - "infinity"
+
+    # Security context - run as root for full debugging capabilities
+    securityContext:
+      runAsUser: 0
+      capabilities:
+        add:
+        - NET_ADMIN
+        - NET_RAW
+
+    # Resource limits
+    resources:
+      requests:
+        cpu: 100m
+        memory: 128Mi
+      limits:
+        cpu: 500m
+        memory: 512Mi
+
+  # DNS policy for testing DNS resolution
+  dnsPolicy: ClusterFirst
+
+  # Host network disabled by default (enable for network debugging)
+  hostNetwork: false
+
+  # Restart policy
+  restartPolicy: Always
+---
+# Optional: ServiceAccount with elevated permissions for Kubernetes API debugging
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: netshoot-sa
+  namespace: default
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: netshoot-debug-role
+rules:
+# Read-only access to most resources for debugging
+- apiGroups: [""]
+  resources:
+  - pods
+  - services
+  - endpoints
+  - namespaces
+  - nodes
+  - persistentvolumeclaims
+  - configmaps
+  - secrets
+  verbs: ["get", "list", "watch"]
+- apiGroups: ["apps"]
+  resources:
+  - deployments
+  - daemonsets
+  - statefulsets
+  - replicasets
+  verbs: ["get", "list", "watch"]
+- apiGroups: ["cert-manager.io"]
+  resources:
+  - certificates
+  - certificaterequests
+  - issuers
+  - clusterissuers
+  verbs: ["get", "list", "watch"]
+- apiGroups: ["networking.k8s.io"]
+  resources:
+  - networkpolicies
+  - ingresses
+  verbs: ["get", "list", "watch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: netshoot-debug-binding
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: netshoot-debug-role
+subjects:
+- kind: ServiceAccount
+  name: netshoot-sa
+  namespace: default

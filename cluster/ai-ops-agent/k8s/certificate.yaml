@@ -1,0 +1,42 @@
+---
+# Certificate: Auto-issued from Vault PKI via cert-manager
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: ai-ops-agent-cert
+  namespace: default
+spec:
+  # Secret where certificate will be stored
+  secretName: ai-ops-agent-tls
+
+  # Use Vault issuer for AI Ops Agent
+  issuerRef:
+    name: vault-issuer-ai-ops
+    kind: ClusterIssuer
+    group: cert-manager.io
+
+  # Certificate details
+  commonName: ai-ops-agent.default.svc.cluster.local
+  dnsNames:
+    - ai-ops-agent
+    - ai-ops-agent.default
+    - ai-ops-agent.default.svc
+    - ai-ops-agent.default.svc.cluster.local
+    - ai-ops-agent.corp.local
+
+  # 30-day certificate with auto-renewal
+  duration: 720h        # 30 days
+  renewBefore: 240h     # Renew 10 days before expiry
+
+  # Private key configuration
+  privateKey:
+    algorithm: RSA
+    size: 2048
+    rotationPolicy: Always  # Rotate key on renewal
+
+  # Usage
+  usages:
+    - digital signature
+    - key encipherment
+    - server auth
+    - client auth

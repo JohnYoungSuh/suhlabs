@@ -1,0 +1,106 @@
+# ============================================================================
+# Vault Helm Values
+# Foundation Secrets Management & PKI Service for Kubernetes
+# ============================================================================
+
+# Global settings
+global:
+  enabled: true
+  tlsDisable: true  # For dev/homelab; enable TLS in production
+
+# Injector configuration (Vault Agent sidecar injection)
+injector:
+  enabled: true
+  replicas: 1
+  resources:
+    requests:
+      cpu: 250m
+      memory: 64Mi
+    limits:
+      cpu: 500m
+      memory: 128Mi
+
+# Server configuration
+server:
+  # Image configuration
+  image:
+    repository: hashicorp/vault
+    tag: "1.20.4"
+    pullPolicy: IfNotPresent
+
+  # Resource limits (good for dev/homelab)
+  resources:
+    requests:
+      cpu: 250m
+      memory: 256Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+
+  # Replicas - single instance for dev
+  replicas: 1
+
+  # Update strategy
+  updateStrategyType: "OnDelete"
+
+  # Service configuration
+  service:
+    enabled: true
+    type: ClusterIP
+    port: 8200
+    targetPort: 8200
+
+  # Data storage configuration
+  dataStorage:
+    enabled: true
+    size: 10Gi
+    storageClass: null  # Use cluster default
+    accessMode: ReadWriteOnce
+
+  # Audit storage (disabled for now, enable in production)
+  auditStorage:
+    enabled: false
+
+  # Standalone mode configuration (file-based storage)
+  standalone:
+    enabled: true
+    config: |
+      ui = true
+
+      listener "tcp" {
+        tls_disable = 1
+        address = "[::]:8200"
+        cluster_address = "[::]:8201"
+      }
+
+      storage "file" {
+        path = "/vault/data"
+      }
+
+      # Enable Prometheus metrics
+      telemetry {
+        prometheus_retention_time = "30s"
+        disable_hostname = true
+      }
+
+  # HA mode (disabled for dev)
+  ha:
+    enabled: false
+
+  # Service account
+  serviceAccount:
+    create: true
+    name: vault
+
+# UI configuration
+ui:
+  enabled: true
+  serviceType: ClusterIP
+  servicePort: 8200
+
+# Server telemetry
+serverTelemetry:
+  serviceMonitor:
+    enabled: false  # Enable when Prometheus is deployed
+  prometheusRules:
+    enabled: false

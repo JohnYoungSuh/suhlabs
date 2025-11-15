@@ -159,11 +159,11 @@ fi
 log_section "3. Vault + SoftHSM Verification"
 
 log_test "Checking Vault deployment..."
-if kubectl get statefulset vault -n vault &> /dev/null; then
-    REPLICAS=$(kubectl get statefulset vault -n vault -o jsonpath='{.status.readyReplicas}')
-    log_success "Vault StatefulSet found (${REPLICAS} replicas ready)"
+if kubectl get deployment vault -n vault &> /dev/null; then
+    REPLICAS=$(kubectl get deployment vault -n vault -o jsonpath='{.status.readyReplicas}')
+    log_success "Vault Deployment found (${REPLICAS} replicas ready)"
 else
-    log_warning "Vault StatefulSet not found (may not be deployed yet)"
+    log_warning "Vault Deployment not found (may not be deployed yet)"
 fi
 
 log_test "Checking Vault pods..."
@@ -188,12 +188,15 @@ if [ "$VAULT_POD_COUNT" -gt 0 ]; then
     # Set Vault address for CLI
     export VAULT_ADDR=http://localhost:8200
 
+    # Get the Vault pod name dynamically
+    VAULT_POD=$(kubectl get pod -n vault -l app=vault -o jsonpath='{.items[0].metadata.name}' 2>/dev/null)
+
     # Try to get seal status
-    if kubectl exec -n vault vault-0 -- vault status &> /dev/null; then
-        SEALED=$(kubectl exec -n vault vault-0 -- vault status -format=json 2>/dev/null | jq -r '.sealed')
+    if kubectl exec -n vault $VAULT_POD -- vault status &> /dev/null; then
+        SEALED=$(kubectl exec -n vault $VAULT_POD -- vault status -format=json 2>/dev/null | jq -r '.sealed')
         if [ "$SEALED" = "false" ]; then
             log_success "Vault is unsealed (ready for operations)"
-            SEAL_TYPE=$(kubectl exec -n vault vault-0 -- vault status -format=json 2>/dev/null | jq -r '.seal_type')
+            SEAL_TYPE=$(kubectl exec -n vault $VAULT_POD -- vault status -format=json 2>/dev/null | jq -r '.seal_type')
             echo "  Seal Type: ${SEAL_TYPE}"
         else
             log_warning "Vault is sealed (needs initialization or unsealing)"
@@ -205,22 +208,18 @@ else
     log_warning "Vault not running, skipping seal status check"
 fi
 
-log_test "Checking SoftHSM configuration..."
+log_test "Checking Vault seal type..."
 if [ "$VAULT_POD_COUNT" -gt 0 ]; then
-    if kubectl exec -n vault vault-0 -- test -f /var/lib/softhsm/tokens/vault-hsm.db 2>/dev/null; then
-        log_success "SoftHSM token database exists"
-
-        # Check token info
-        if kubectl exec -n vault vault-0 -- softhsm2-util --show-slots 2>/dev/null | grep -q "vault-hsm"; then
-            log_success "SoftHSM token initialized"
-        else
-            log_warning "SoftHSM token may not be properly initialized"
-        fi
+    VAULT_POD=$(kubectl get pod -n vault -l app=vault -o jsonpath='{.items[0].metadata.name}' 2>/dev/null)
+    if kubectl exec -n vault $VAULT_POD -- vault status 2>/dev/null | grep -q "Seal Type"; then
+        SEAL_TYPE=$(kubectl exec -n vault $VAULT_POD -- vault status 2>/dev/null | grep "Seal Type" | awk '{print $3}')
+        log_success "Vault seal type: ${SEAL_TYPE}"
+        echo "  Note: Using Shamir seal (manual unseal) for open-source Vault"
     else
-        log_warning "SoftHSM token database not found"
+        log_warning "Cannot determine Vault seal type"
     fi
 else
-    log_warning "Vault not running, skipping SoftHSM check"
+    log_warning "Vault not running, skipping seal type check"
 fi
 
 # ============================================================================
@@ -301,16 +300,17 @@ else
     log_warning "Services not running, skipping integration tests"
 fi
 
-log_test "Testing Vault → SoftHSM integration..."
+log_test "Testing Vault API accessibility..."
 if [ "$VAULT_POD_COUNT" -gt 0 ]; then
-    # Check Vault seal configuration mentions PKCS#11
-    if kubectl exec -n vault vault-0 -- vault status 2>/dev/null | grep -qi "pkcs11"; then
-        log_success "Vault configured with PKCS#11 (SoftHSM)"
+    VAULT_POD=$(kubectl get pod -n vault -l app=vault -o jsonpath='{.items[0].metadata.name}' 2>/dev/null)
+    # Check if Vault API responds
+    if kubectl exec -n vault $VAULT_POD -- vault status 2>/dev/null | grep -q "Initialized"; then
+        log_success "Vault API is accessible"
     else
-        log_warning "Vault seal type may not be PKCS#11"
+        log_warning "Vault API may not be initialized"
     fi
 else
-    log_warning "Vault not running, skipping SoftHSM integration test"
+    log_warning "Vault not running, skipping API accessibility test"
 fi
 
 # ============================================================================
@@ -378,8 +378,9 @@ fi
 
 log_test "Checking Vault response times..."
 if [ "$VAULT_POD_COUNT" -gt 0 ]; then
+    VAULT_POD=$(kubectl get pod -n vault -l app=vault -o jsonpath='{.items[0].metadata.name}' 2>/dev/null)
     START=$(date +%s%N)
-    kubectl exec -n vault vault-0 -- vault status &> /dev/null || true
+    kubectl exec -n vault $VAULT_POD -- vault status &> /dev/null || true
     END=$(date +%s%N)
     DURATION=$(( (END - START) / 1000000 ))
 

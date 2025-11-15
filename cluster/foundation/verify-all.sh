@@ -126,12 +126,16 @@ else
 fi
 
 log_test "Checking CoreDNS pods..."
-POD_COUNT=$(kubectl get pods -n kube-system -l k8s-app=coredns --field-selector=status.phase=Running --no-headers 2>/dev/null | wc -l)
+# Note: Kind clusters use k8s-app=kube-dns label for CoreDNS pods
+POD_COUNT=$(kubectl get pods -n kube-system -l k8s-app=kube-dns --field-selector=status.phase=Running --no-headers 2>/dev/null | wc -l)
 if [ "$POD_COUNT" -gt 0 ]; then
     log_success "CoreDNS pods running ($POD_COUNT)"
-    kubectl get pods -n kube-system -l k8s-app=coredns
+    kubectl get pods -n kube-system -l k8s-app=kube-dns
 else
     log_error "No CoreDNS pods running"
+    echo "  Debugging info:"
+    echo "  All kube-system pods:"
+    kubectl get pods -n kube-system | sed 's/^/    /'
 fi
 
 log_test "Testing cluster.local DNS resolution..."
@@ -436,7 +440,7 @@ echo ""
 if [ $FAILED -gt 0 ] || [ $WARNINGS -gt 0 ]; then
     echo "  1. Review failed/warning tests above"
     echo "  2. Check service logs:"
-    echo "     kubectl logs -n kube-system -l k8s-app=coredns"
+    echo "     kubectl logs -n kube-system -l k8s-app=kube-dns"
     echo "     kubectl logs -n vault -l app=vault"
     echo "  3. Run individual verification scripts:"
     echo "     cd coredns && ./deploy.sh"

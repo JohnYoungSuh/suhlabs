@@ -82,7 +82,7 @@ kubectl describe pod <pod-name>
 docker pull nginx:latest
 docker pull ollama/ollama:latest
 docker pull postgres:15
-docker pull vault:1.15
+docker pull hashicorp/vault:1.15
 ```
 
 #### 2. Use Image Pull Secrets (Production)

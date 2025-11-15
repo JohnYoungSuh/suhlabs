@@ -118,7 +118,7 @@ spec:
       initContainers:
         # Initialize SoftHSM token
         - name: init-softhsm
-          image: hashicorp/vault:1.17
+          image: hashicorp/vault:1.15
           command:
             - /bin/sh
             - -c
@@ -155,7 +155,7 @@ spec:
 
       containers:
         - name: vault
-          image: hashicorp/vault:1.17
+          image: hashicorp/vault:1.15
           imagePullPolicy: IfNotPresent
           command:
             - /bin/sh

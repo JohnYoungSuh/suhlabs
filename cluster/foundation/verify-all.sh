@@ -94,7 +94,7 @@ check_command openssl || true
 
 log_test "Checking cluster connectivity..."
 if kubectl cluster-info &> /dev/null; then
-    CLUSTER_VERSION=$(kubectl version --short 2>/dev/null | grep Server | awk '{print $3}')
+    CLUSTER_VERSION=$(kubectl get nodes -o jsonpath='{.items[0].status.nodeInfo.kubeletVersion}' 2>/dev/null)
     log_success "Cluster is accessible (version: ${CLUSTER_VERSION})"
 else
     log_error "Cannot connect to Kubernetes cluster"

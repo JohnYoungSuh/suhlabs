@@ -47,13 +47,6 @@ data:
     # For development: disable mlock to avoid permission issues
     disable_mlock = true
 
-  softhsm2.conf: |
-    # SoftHSM v2 configuration
-    directories.tokendir = /vault/softhsm/tokens
-    objectstore.backend = file
-    log.level = INFO
-    slots.removable = false
-
 ---
 apiVersion: v1
 kind: PersistentVolumeClaim
@@ -67,20 +60,6 @@ spec:
     requests:
       storage: 1Gi
   storageClassName: standard  # Adjust for your cluster
-
----
-apiVersion: v1
-kind: PersistentVolumeClaim
-metadata:
-  name: vault-softhsm
-  namespace: vault
-spec:
-  accessModes:
-    - ReadWriteOnce
-  resources:
-    requests:
-      storage: 100Mi
-  storageClassName: standard
 
 ---
 apiVersion: v1
@@ -210,9 +189,6 @@ spec:
         - name: vault-data
           persistentVolumeClaim:
             claimName: vault-data
-        - name: vault-softhsm
-          persistentVolumeClaim:
-            claimName: vault-softhsm
 
 ---
 apiVersion: v1

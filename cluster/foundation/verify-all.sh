@@ -93,13 +93,21 @@ check_command vault || true
 check_command openssl || true
 
 log_test "Checking cluster connectivity..."
-if kubectl cluster-info &> /dev/null; then
-    CLUSTER_VERSION=$(kubectl version --short 2>/dev/null | grep Server | awk '{print $3}')
+CLUSTER_INFO_OUTPUT=$(kubectl cluster-info 2>&1)
+CLUSTER_INFO_EXIT=$?
+
+if [ $CLUSTER_INFO_EXIT -eq 0 ]; then
+    CLUSTER_VERSION=$(kubectl get nodes -o jsonpath='{.items[0].status.nodeInfo.kubeletVersion}' 2>/dev/null)
     log_success "Cluster is accessible (version: ${CLUSTER_VERSION})"
 else
     log_error "Cannot connect to Kubernetes cluster"
+    echo "  Exit code: $CLUSTER_INFO_EXIT"
+    echo "  Error output:"
+    echo "$CLUSTER_INFO_OUTPUT" | sed 's/^/    /'
+    echo ""
     echo "  Hint: Is your kind cluster running?"
     echo "  Try: kind get clusters"
+    echo "  Current context: $(kubectl config current-context 2>&1)"
     exit 1
 fi
 

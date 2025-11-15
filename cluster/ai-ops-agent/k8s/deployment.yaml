@@ -1,0 +1,119 @@
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ai-ops-agent
+  namespace: default
+  labels:
+    app: ai-ops-agent
+    version: v0.1.0
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: ai-ops-agent
+  template:
+    metadata:
+      labels:
+        app: ai-ops-agent
+        version: v0.1.0
+    spec:
+      # Security context
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        fsGroup: 1000
+
+      # Init container: Wait for certificate to be issued and mounted
+      # Three-layer defense against race conditions:
+      # 1. deploy.sh waits for Certificate Ready status
+      # 2. This init container checks Certificate Ready status
+      # 3. This init container verifies file is actually mounted
+      # Lesson learned from CoreDNS deployment - always wait for cert-manager!
+      initContainers:
+      - name: wait-for-certificate
+        image: bitnami/kubectl:latest
+        command:
+        - sh
+        - -c
+        - |
+          echo "Waiting for certificate ai-ops-agent-cert to be ready..."
+          until kubectl get certificate ai-ops-agent-cert -n default -o jsonpath='{.status.conditions[?(@.type=="Ready")].status}' 2>/dev/null | grep -q "True"; do
+            echo "Certificate not ready yet, waiting 5 seconds..."
+            sleep 5
+          done
+          echo "Certificate is ready!"
+
+          echo "Waiting for certificate file to be mounted..."
+          until [ -f /etc/tls/tls.crt ]; do
+            echo "Waiting for cert file..."
+            sleep 2
+          done
+          echo "Certificate file mounted! Proceeding with pod startup."
+        volumeMounts:
+        - name: tls
+          mountPath: /etc/tls
+          readOnly: true
+
+      containers:
+      - name: ai-ops-agent
+        image: ai-ops-agent:0.1.0
+        imagePullPolicy: IfNotPresent
+
+        ports:
+        - name: http
+          containerPort: 8000
+          protocol: TCP
+
+        # Environment variables
+        env:
+        - name: ENVIRONMENT
+          value: "production"
+        - name: TLS_CERT_FILE
+          value: /etc/tls/tls.crt
+        - name: TLS_KEY_FILE
+          value: /etc/tls/tls.key
+        - name: TLS_CA_FILE
+          value: /etc/tls/ca.crt
+
+        # Resource limits
+        resources:
+          requests:
+            cpu: 100m
+            memory: 128Mi
+          limits:
+            cpu: 500m
+            memory: 512Mi
+
+        # Liveness probe
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: http
+          initialDelaySeconds: 10
+          periodSeconds: 30
+          timeoutSeconds: 5
+          failureThreshold: 3
+
+        # Readiness probe
+        readinessProbe:
+          httpGet:
+            path: /ready
+            port: http
+          initialDelaySeconds: 5
+          periodSeconds: 10
+          timeoutSeconds: 3
+          failureThreshold: 3
+
+        # Volume mounts
+        volumeMounts:
+        - name: tls
+          mountPath: /etc/tls
+          readOnly: true
+
+      # Volumes
+      volumes:
+      - name: tls
+        secret:
+          secretName: ai-ops-agent-tls
+          defaultMode: 0400

@@ -228,8 +228,8 @@ spec:
           securityContext:
             allowPrivilegeEscalation: false
             readOnlyRootFilesystem: false  # Vault needs to write to /tmp
-            runAsNonRoot: true
-            runAsUser: 1000
+            runAsNonRoot: false  # Need root to install SoftHSM via apk
+            runAsUser: 0  # Run as root to allow apk package installation
             capabilities:
               drop:
                 - ALL

@@ -139,19 +139,23 @@ else
 fi
 
 log_test "Testing cluster.local DNS resolution..."
-if kubectl run dns-test-cluster --image=busybox:1.36 --rm -it --restart=Never \
-    --command -- nslookup kubernetes.default.svc.cluster.local 2>&1 | grep -q "Address 1:"; then
+DNS_TEST_OUTPUT=$(kubectl run dns-test-cluster --image=busybox:1.36 --rm --restart=Never \
+    --attach=true --quiet -- nslookup kubernetes.default.svc.cluster.local 2>&1)
+if echo "$DNS_TEST_OUTPUT" | grep -qE "(Address|answer:)"; then
     log_success "cluster.local DNS resolution working"
 else
     log_error "cluster.local DNS resolution failed"
+    echo "  Test output: $DNS_TEST_OUTPUT" | head -3
 fi
 
 log_test "Testing corp.local DNS resolution..."
-if kubectl run dns-test-corp --image=busybox:1.36 --rm -it --restart=Never \
-    --command -- nslookup ns1.corp.local 2>&1 | grep -q "Address 1:"; then
+DNS_TEST_OUTPUT=$(kubectl run dns-test-corp --image=busybox:1.36 --rm --restart=Never \
+    --attach=true --quiet -- nslookup ns1.corp.local 2>&1)
+if echo "$DNS_TEST_OUTPUT" | grep -qE "(Address|answer:)"; then
     log_success "corp.local DNS resolution working"
 else
     log_warning "corp.local DNS resolution failed (may not be critical)"
+    echo "  Test output: $DNS_TEST_OUTPUT" | head -3
 fi
 
 log_test "Checking CoreDNS ConfigMap..."
@@ -294,16 +298,19 @@ log_section "5. Integration Testing"
 log_test "Testing DNS → Vault integration..."
 if [ "$POD_COUNT" -gt 0 ] && [ "$VAULT_POD_COUNT" -gt 0 ]; then
     # Test that CoreDNS can resolve Vault service
-    if kubectl run dns-vault-test --image=busybox:1.36 --rm -it --restart=Never \
-        --command -- nslookup vault.vault.svc.cluster.local 2>&1 | grep -q "Address 1:"; then
+    VAULT_DNS_OUTPUT=$(kubectl run dns-vault-test --image=busybox:1.36 --rm --restart=Never \
+        --attach=true --quiet -- nslookup vault.vault.svc.cluster.local 2>&1)
+    if echo "$VAULT_DNS_OUTPUT" | grep -qE "(Address|answer:)"; then
         log_success "CoreDNS can resolve Vault service"
     else
         log_error "CoreDNS cannot resolve Vault service"
+        echo "  Test output: $VAULT_DNS_OUTPUT" | head -3
     fi
 
     # Test corp.local CNAME
-    if kubectl run dns-vault-corp-test --image=busybox:1.36 --rm -it --restart=Never \
-        --command -- nslookup vault.corp.local 2>&1 | grep -q "canonical name"; then
+    CORP_DNS_OUTPUT=$(kubectl run dns-vault-corp-test --image=busybox:1.36 --rm --restart=Never \
+        --attach=true --quiet -- nslookup vault.corp.local 2>&1)
+    if echo "$CORP_DNS_OUTPUT" | grep -q "canonical name"; then
         log_success "corp.local CNAME to Vault working"
     else
         log_warning "corp.local CNAME to Vault not configured"

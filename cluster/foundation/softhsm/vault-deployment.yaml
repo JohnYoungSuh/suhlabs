@@ -166,7 +166,7 @@ spec:
 
           livenessProbe:
             httpGet:
-              path: /v1/sys/health?standbyok=true
+              path: /v1/sys/health?standbyok=true&sealedcode=204&uninitcode=204
               port: 8200
               scheme: HTTP
             initialDelaySeconds: 60

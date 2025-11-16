@@ -1,0 +1,90 @@
+# MCP (Model Control Protocol) Policies
+#
+# Security, compliance, and operational guardrails for AI-driven infrastructure automation
+
+security:
+  no_production_deletion:
+    enabled: true
+    severity: critical
+    message: "Direct deletion of production resources is not allowed. Use blue-green deployment."
+
+  require_mfa:
+    enabled: true
+    severity: high
+    message: "MFA is required for privileged operations"
+
+  tls_required:
+    enabled: true
+    severity: high
+    message: "All websites must have TLS enabled"
+
+  secrets_encryption:
+    enabled: true
+    severity: critical
+    message: "Secrets must be stored in Vault, not plain text. Use 'vault:<path>' format."
+
+  mtls_required:
+    enabled: false  # Optional enforcement
+    severity: medium
+    message: "mTLS is recommended for service-to-service communication"
+
+compliance:
+  resource_tagging:
+    enabled: true
+    severity: medium
+    required_tags:
+      - owner
+      - project
+      - environment
+    message: "All resources must be tagged with: owner, project, environment"
+
+  audit_logging:
+    enabled: true
+    severity: high
+    message: "High-privilege operations require approval and audit logging"
+
+  data_residency:
+    enabled: false  # Enable when multi-region
+    severity: critical
+    allowed_regions:
+      - us-east-1
+      - eu-west-1
+    message: "Data must reside in compliant regions"
+
+  cost_limits:
+    enabled: false  # Enable when cost tracking implemented
+    severity: medium
+    max_monthly_cost: 1000
+    message: "Resource cost exceeds budget limits"
+
+operational:
+  change_windows:
+    enabled: false  # Enable for production-critical systems
+    severity: medium
+    allowed_windows:
+      - day: monday
+        start: "09:00"
+        end: "17:00"
+      - day: wednesday
+        start: "09:00"
+        end: "17:00"
+    message: "Production changes only allowed during change windows: Mon & Wed 09:00-17:00 UTC"
+
+  rollback_required:
+    enabled: true
+    severity: high
+    message: "Production changes require a rollback plan"
+
+  testing_required:
+    enabled: false  # Enable when CI/CD mature
+    severity: high
+    message: "Changes must be tested in staging before production"
+
+  rate_limiting:
+    enabled: false  # Enable when needed
+    severity: medium
+    limits:
+      provision: 10  # per hour
+      delete: 5      # per hour
+      rotate: 20     # per hour
+    message: "Rate limit exceeded. Contact admin for increase."

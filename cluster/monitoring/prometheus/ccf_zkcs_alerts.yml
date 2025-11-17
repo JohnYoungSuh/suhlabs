@@ -1,0 +1,194 @@
+# Prometheus alert rules for CCF-ZKCS monitoring
+#
+# Deploy to: /etc/prometheus/rules/ccf_zkcs_alerts.yml
+#
+# Monitors:
+# - Resource usage (CPU, memory, disk)
+# - Cache performance (hit rate, latency)
+# - Security (cert expiration, HMAC failures)
+# - Operational health (FD leaks, eviction rate)
+
+groups:
+  - name: ccf_zkcs_resources
+    interval: 30s
+    rules:
+      # Resource thresholds (90% warning)
+      - alert: CCFZKCSMemoryThreshold
+        expr: (container_memory_usage_bytes{name="ccf_zkcs"} / 8589934592) > 0.90
+        for: 5m
+        labels:
+          severity: warning
+          component: ml
+          feature: ccf_zkcs
+        annotations:
+          summary: "CCF-ZKCS exceeds 90% memory quota"
+          description: "CCF-ZKCS container using {{ $value | humanizePercentage }} of 8GB memory limit. Current: {{ $value }}%"
+
+      - alert: CCFZKCSCPUThreshold
+        expr: (rate(container_cpu_usage_seconds_total{name="ccf_zkcs"}[5m]) / 4.0) > 0.90
+        for: 5m
+        labels:
+          severity: warning
+          component: ml
+          feature: ccf_zkcs
+        annotations:
+          summary: "CCF-ZKCS exceeds 90% CPU quota"
+          description: "CCF-ZKCS using {{ $value | humanizePercentage }} of 4 vCPU limit"
+
+      - alert: CCFZKCSCacheDiskFull
+        expr: (ccf_zkcs_cache_size_bytes / (16 * 1024^3)) > 0.90
+        for: 10m
+        labels:
+          severity: warning
+          component: ml
+          feature: ccf_zkcs
+        annotations:
+          summary: "CCF-ZKCS cache approaching disk limit"
+          description: "Cache using {{ $value | humanizePercentage }} of 16GB limit. Eviction will increase."
+
+  - name: ccf_zkcs_performance
+    interval: 60s
+    rules:
+      # Cache hit rate below threshold
+      - alert: CCFZKCSLowCacheHitRate
+        expr: ccf_zkcs_cache_hit_rate < 0.45
+        for: 1h
+        labels:
+          severity: warning
+          component: ml
+          feature: ccf_zkcs
+        annotations:
+          summary: "CCF-ZKCS cache hit rate below 45% threshold"
+          description: "Current hit rate: {{ $value | humanizePercentage }}. Expected ≥45% for ROI."
+
+      # P95 latency exceeds target
+      - alert: CCFZKCSP95LatencyHigh
+        expr: histogram_quantile(0.95, rate(ccf_zkcs_request_duration_seconds_bucket[5m])) > 0.360
+        for: 15m
+        labels:
+          severity: warning
+          component: ml
+          feature: ccf_zkcs
+        annotations:
+          summary: "CCF-ZKCS P95 latency exceeds 360ms target"
+          description: "P95 latency: {{ $value }}s. Target: 360ms. Check for cache thrashing."
+
+      # High cache miss rate spike
+      - alert: CCFZKCSCacheMissSpike
+        expr: rate(ccf_zkcs_cache_misses_total[5m]) > 100
+        for: 10m
+        labels:
+          severity: info
+          component: ml
+          feature: ccf_zkcs
+        annotations:
+          summary: "CCF-ZKCS experiencing high cache miss rate"
+          description: "Cache misses: {{ $value }}/s. May indicate new traffic patterns."
+
+  - name: ccf_zkcs_security
+    interval: 60s
+    rules:
+      # Certificate expiration warning
+      - alert: CCFZKCSCertExpiringSoon
+        expr: (ccf_zkcs_cert_expiry_timestamp - time()) < (7 * 24 * 3600)
+        for: 1h
+        labels:
+          severity: critical
+          component: ml
+          feature: ccf_zkcs
+        annotations:
+          summary: "CCF-ZKCS TLS certificate expiring in < 7 days"
+          description: "Certificate expires in {{ $value | humanizeDuration }}. Check cert-manager."
+
+      # HMAC verification failures
+      - alert: CCFZKCSHMACVerificationFailures
+        expr: rate(ccf_zkcs_hmac_verification_failures_total[5m]) > 0
+        for: 5m
+        labels:
+          severity: critical
+          component: ml
+          feature: ccf_zkcs
+        annotations:
+          summary: "CCF-ZKCS detecting cache integrity failures"
+          description: "HMAC failures: {{ $value }}/s. Possible cache corruption or attack."
+
+      # Vault connection failures
+      - alert: CCFZKCSVaultConnectionFailed
+        expr: rate(ccf_zkcs_vault_connection_errors_total[5m]) > 0.1
+        for: 5m
+        labels:
+          severity: critical
+          component: ml
+          feature: ccf_zkcs
+        annotations:
+          summary: "CCF-ZKCS cannot connect to Vault"
+          description: "Vault errors: {{ $value }}/s. Check Vault service and mTLS certs."
+
+  - name: ccf_zkcs_operational
+    interval: 30s
+    rules:
+      # File descriptor leak
+      - alert: CCFZKCSFileDescriptorLeak
+        expr: process_open_fds{job="ccf_zkcs"} > (process_max_fds{job="ccf_zkcs"} * 0.8)
+        for: 10m
+        labels:
+          severity: warning
+          component: ml
+          feature: ccf_zkcs
+        annotations:
+          summary: "CCF-ZKCS file descriptor usage high"
+          description: "FDs: {{ $value }} / {{ $labels.process_max_fds }}. Check for mmap leaks."
+
+      # Excessive cache eviction
+      - alert: CCFZKCSHighEvictionRate
+        expr: rate(ccf_zkcs_cache_evictions_total[5m]) > 10
+        for: 15m
+        labels:
+          severity: info
+          component: ml
+          feature: ccf_zkcs
+        annotations:
+          summary: "CCF-ZKCS evicting cache entries frequently"
+          description: "Eviction rate: {{ $value }}/s. Cache may be undersized or traffic increased."
+
+      # Service down
+      - alert: CCFZKCSServiceDown
+        expr: up{job="ccf_zkcs"} == 0
+        for: 2m
+        labels:
+          severity: critical
+          component: ml
+          feature: ccf_zkcs
+        annotations:
+          summary: "CCF-ZKCS service is down"
+          description: "Service unavailable for {{ $value | humanizeDuration }}. Check container logs."
+
+      # Qdrant connection failures
+      - alert: CCFZKCSQdrantConnectionFailed
+        expr: rate(ccf_zkcs_qdrant_connection_errors_total[5m]) > 0.1
+        for: 5m
+        labels:
+          severity: warning
+          component: ml
+          feature: ccf_zkcs
+        annotations:
+          summary: "CCF-ZKCS cannot connect to Qdrant"
+          description: "Qdrant errors: {{ $value }}/s. Metadata operations degraded."
+
+  - name: ccf_zkcs_business_metrics
+    interval: 300s  # 5 minutes
+    rules:
+      # Total compute savings
+      - record: ccf_zkcs:compute_saved_minutes:1h
+        expr: sum(increase(ccf_zkcs_compute_saved_ms_total[1h])) / 60000
+
+      # Cost savings (at $2.50/GPU-hour)
+        expr: (ccf_zkcs:compute_saved_minutes:1h / 60) * 2.50
+
+      # Cache efficiency ratio
+      - record: ccf_zkcs:efficiency_ratio:5m
+        expr: ccf_zkcs_cache_hit_rate / (1 - ccf_zkcs_cache_hit_rate)
+
+      # Requests per second
+      - record: ccf_zkcs:requests_per_second:5m
+        expr: rate(ccf_zkcs_requests_total[5m])

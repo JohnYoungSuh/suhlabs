@@ -1,0 +1,114 @@
+---
+# Ansible playbook for rolling back CCF-ZKCS deployment
+#
+# Usage:
+#   ansible-playbook -i inventory/hosts.yml rollback_ccf_zkcs.yml \
+#     -e "previous_commit=abc123def"
+
+- name: Rollback CCF-ZKCS Deployment
+  hosts: ml_servers
+  become: yes
+  vars:
+    previous_commit: "{{ previous_commit | default('HEAD~1') }}"
+    cache_dir: "/dev/shm/suhlabs/kv_cache"
+
+  tasks:
+    - name: Stop CCF-ZKCS service
+      ansible.builtin.systemd:
+        name: ccf_zkcs
+        state: stopped
+      ignore_errors: yes
+
+    - name: Stop Docker container
+      community.docker.docker_container:
+        name: ccf_zkcs
+        state: stopped
+      ignore_errors: yes
+
+    - name: Remove Docker container
+      community.docker.docker_container:
+        name: ccf_zkcs
+        state: absent
+
+    - name: Clear cache directory (optional - preserves data by default)
+      ansible.builtin.file:
+        path: "{{ cache_dir }}"
+        state: absent
+      when: clear_cache | default(false) | bool
+
+    - name: Recreate cache directory
+      ansible.builtin.file:
+        path: "{{ cache_dir }}"
+        state: directory
+        mode: "0700"
+        owner: suhlabs
+        group: suhlabs
+
+    - name: Remove Python package
+      ansible.builtin.pip:
+        name: suhlabs-ccf-zkcs
+        state: absent
+      ignore_errors: yes
+
+    - name: Checkout previous git commit
+      ansible.builtin.git:
+        repo: https://github.com/JohnYoungSuh/suhlabs.git
+        dest: /opt/suhlabs
+        version: "{{ previous_commit }}"
+        force: yes
+
+    - name: Disable CCF-ZKCS feature flag
+      ansible.builtin.lineinfile:
+        path: /etc/suhlabs/feature_flags.conf
+        line: "CCF_ZKCS_ENABLED=false"
+        state: present
+        create: yes
+
+    - name: Remove canary traffic routing
+      ansible.builtin.file:
+        path: /etc/nginx/conf.d/ccf_zkcs_canary.conf
+        state: absent
+      notify: Reload nginx
+
+    - name: Restart Ollama service
+      ansible.builtin.systemd:
+        name: ollama
+        state: restarted
+        daemon_reload: yes
+
+    - name: Wait for Ollama to be ready
+      ansible.builtin.uri:
+        url: "https://{{ inventory_hostname }}:11435/api/tags"
+        validate_certs: yes
+        method: GET
+        status_code: 200
+      register: ollama_health
+      retries: 10
+      delay: 5
+      until: ollama_health.status == 200
+
+    - name: Verify rollback successful
+      ansible.builtin.shell: |
+        if systemctl is-active ccf_zkcs > /dev/null 2>&1; then
+          echo "FAILED: CCF-ZKCS service still running"
+          exit 1
+        fi
+
+        if docker ps | grep ccf_zkcs > /dev/null 2>&1; then
+          echo "FAILED: CCF-ZKCS container still running"
+          exit 1
+        fi
+
+        echo "SUCCESS: Rollback complete"
+      register: rollback_verify
+      failed_when: "'FAILED' in rollback_verify.stdout"
+
+    - name: Display rollback status
+      ansible.builtin.debug:
+        msg: "{{ rollback_verify.stdout }}"
+
+  handlers:
+    - name: Reload nginx
+      ansible.builtin.service:
+        name: nginx
+        state: reloaded

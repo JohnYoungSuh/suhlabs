@@ -1,0 +1,198 @@
+---
+# Ansible playbook for deploying CCF-ZKCS feature
+#
+# Usage:
+#   ansible-playbook -i inventory/hosts.yml deploy_ccf_zkcs.yml
+#
+# Implements rolling deploy with health checks and canary traffic
+
+- name: Deploy CCF-ZKCS to ML Servers
+  hosts: ml_servers
+  serial: "25%"  # Rolling deploy: 25% at a time
+  become: yes
+  vars:
+    ccf_zkcs_version: "v1.0.0"
+    ccf_zkcs_enabled: true
+    canary_traffic_percent: 10
+    cache_dir: "/dev/shm/suhlabs/kv_cache"
+    max_segment_mb: 2048
+    max_total_cache_gb: 16
+
+  tasks:
+    - name: Ensure Python 3.10+ is installed
+      ansible.builtin.package:
+        name: python3
+        state: present
+
+    - name: Create SuhLabs ML directory structure
+      ansible.builtin.file:
+        path: "{{ item }}"
+        state: directory
+        mode: "0755"
+      loop:
+        - /opt/suhlabs/ml
+        - /opt/suhlabs/ml/features
+        - /opt/suhlabs/ml/common
+        - "{{ cache_dir }}"
+
+    - name: Set cache directory permissions (tmpfs)
+      ansible.builtin.file:
+        path: "{{ cache_dir }}"
+        state: directory
+        mode: "0700"
+        owner: suhlabs
+        group: suhlabs
+
+    - name: Copy CCF-ZKCS feature files
+      ansible.builtin.copy:
+        src: "{{ item.src }}"
+        dest: "{{ item.dest }}"
+        mode: "0644"
+      loop:
+        - src: ../../ml/features/ccf_zkcs/
+          dest: /opt/suhlabs/ml/features/ccf_zkcs/
+        - src: ../../ml/common/
+          dest: /opt/suhlabs/ml/common/
+
+    - name: Install Python dependencies
+      ansible.builtin.pip:
+        name:
+          - blake3==0.3.3
+          - hvac==1.2.1
+          - numpy==1.24.3
+          - psutil==5.9.5
+          - qdrant-client==1.7.0
+          - fastapi==0.100.0
+          - uvicorn==0.23.2
+        state: present
+        extra_args: --no-cache-dir
+
+    - name: Create CCF-ZKCS systemd service
+      ansible.builtin.template:
+        src: templates/ccf_zkcs.service.j2
+        dest: /etc/systemd/system/ccf_zkcs.service
+        mode: "0644"
+      notify: Reload systemd
+
+    - name: Configure Vault HMAC key (idempotent)
+      ansible.builtin.shell: |
+        export VAULT_ADDR=https://vault.corp.local:8200
+        export VAULT_TOKEN={{ vault_token }}
+
+        # Check if HMAC key exists
+        if ! vault kv get secret/suhlabs/ccf_zkcs/hmac_keys > /dev/null 2>&1; then
+          # Generate random 32-byte HMAC key
+          HMAC_KEY=$(openssl rand -base64 32)
+          vault kv put secret/suhlabs/ccf_zkcs/hmac_keys key="$HMAC_KEY"
+          echo "Created HMAC key"
+        else
+          echo "HMAC key already exists"
+        fi
+      register: vault_hmac_result
+      changed_when: "'Created HMAC key' in vault_hmac_result.stdout"
+
+    - name: Deploy Docker container with resource limits
+      community.docker.docker_container:
+        name: ccf_zkcs
+        image: "suhlabs/ccf_zkcs_proxy:{{ ccf_zkcs_version }}"
+        state: started
+        restart_policy: unless-stopped
+        cpus: "4.0"              # 4 of 16 vCPUs
+        memory: "8G"             # 8 of 32GB RAM
+        memory_reservation: "6G"
+        pids_limit: 512
+        ulimits:
+          - "nofile=4096:8192"
+          - "memlock=-1:-1"
+        security_opts:
+          - "no-new-privileges:true"
+        volumes:
+          - "{{ cache_dir }}:{{ cache_dir }}"
+          - "/etc/suhlabs/certs:/etc/suhlabs/certs:ro"
+        env:
+          CCF_ZKCS_ENABLED: "{{ ccf_zkcs_enabled }}"
+          CACHE_DIR: "{{ cache_dir }}"
+          MAX_SEGMENT_MB: "{{ max_segment_mb }}"
+          MAX_TOTAL_CACHE_GB: "{{ max_total_cache_gb }}"
+        networks:
+          - name: suhlabs_network
+
+    - name: Wait for service to be healthy
+      ansible.builtin.uri:
+        url: "https://{{ inventory_hostname }}:8443/healthz"
+        validate_certs: yes
+        method: GET
+        status_code: 200
+      register: health_check
+      retries: 10
+      delay: 5
+      until: health_check.status == 200
+
+    - name: Verify cache directory is writable
+      ansible.builtin.file:
+        path: "{{ cache_dir }}/test_write"
+        state: touch
+        mode: "0600"
+      register: cache_write_test
+
+    - name: Clean up test file
+      ansible.builtin.file:
+        path: "{{ cache_dir }}/test_write"
+        state: absent
+      when: cache_write_test is succeeded
+
+    - name: Enable CCF-ZKCS feature flag
+      ansible.builtin.lineinfile:
+        path: /etc/suhlabs/feature_flags.conf
+        line: "CCF_ZKCS_ENABLED=true"
+        create: yes
+        mode: "0644"
+
+    - name: Configure canary traffic routing
+      ansible.builtin.template:
+        src: templates/nginx_canary.conf.j2
+        dest: /etc/nginx/conf.d/ccf_zkcs_canary.conf
+        mode: "0644"
+      vars:
+        canary_percent: "{{ canary_traffic_percent }}"
+      notify: Reload nginx
+
+    - name: Verify Qdrant collection exists
+      ansible.builtin.shell: |
+        python3 /opt/suhlabs/infra/qdrant/ccf_zkcs_collection.py
+      register: qdrant_setup
+      changed_when: "'Created' in qdrant_setup.stdout"
+
+  handlers:
+    - name: Reload systemd
+      ansible.builtin.systemd:
+        daemon_reload: yes
+
+    - name: Reload nginx
+      ansible.builtin.service:
+        name: nginx
+        state: reloaded
+
+- name: Post-deployment verification
+  hosts: ml_servers
+  tasks:
+    - name: Run antipattern tests
+      ansible.builtin.command:
+        cmd: pytest /opt/suhlabs/ml/tests/ccf_zkcs/ -v
+      register: test_results
+      failed_when: test_results.rc != 0
+
+    - name: Check cache hit rate after 1 hour
+      ansible.builtin.uri:
+        url: "https://{{ inventory_hostname }}:8443/metrics"
+        validate_certs: yes
+        method: GET
+      register: metrics
+      delay: 3600  # Wait 1 hour
+
+    - name: Verify cache hit rate >= 45%
+      ansible.builtin.assert:
+        that:
+          - metrics.json.cache_hit_rate >= 0.45
+        fail_msg: "Cache hit rate below threshold: {{ metrics.json.cache_hit_rate }}"
+        success_msg: "Cache hit rate meets threshold: {{ metrics.json.cache_hit_rate }}"

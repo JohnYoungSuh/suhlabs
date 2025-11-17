@@ -1,0 +1,30 @@
+# CCF-ZKCS Feature Dependencies
+# SuhLabs ML Infrastructure
+
+# Core cryptography
+blake3==0.3.3
+certifi==2023.7.22
+
+# Vault integration
+hvac==1.2.1
+
+# Numerical computing
+numpy==1.24.3
+
+# System utilities
+psutil==5.9.5
+
+# Vector database
+qdrant-client==1.7.0
+
+# Web framework (for metrics endpoint)
+fastapi==0.100.0
+uvicorn[standard]==0.23.2
+
+# Testing
+pytest==7.4.0
+pytest-asyncio==0.21.1
+
+# Type checking (optional)
+mypy==1.4.1
+types-psutil==5.9.5

@@ -83,19 +83,42 @@ provision:
     photoprism:
       playbook: "services/photoprism/deploy.sh"
       default_vars:
-        storage_size: "3Ti"
+        storage_size: "1Ti"
         mariadb_storage: "50Gi"
         cache_storage: "100Gi"
-        enable_gpu: false
-        enable_authelia: false
-        domain: "photos.familyname.family"
+        enable_gpu: true
+        enable_authelia: true
+        domain: "photos.$family_name.family"  # Templated per family
+        family_name: null  # REQUIRED: Set during onboarding
+        preferred_name: null  # Optional: Customer-facing name
         tags:
           managed_by: "ai-ops-agent"
           service: "photoprism"
           project: "suhlabs"
+          family: "$family_name"
       requires_approval: true
       estimated_duration: "15 minutes"
-      rollback_plan: "kubectl delete namespace photoprism"
+      rollback_plan: "kubectl delete namespace photoprism-$family_name"
+
+  onboard:
+    photoprism:
+      # Conversational onboarding flow via AI Ops bot
+      api_endpoint: "/api/v1/photoprism/onboard"
+      default_vars:
+        tld: "family"
+        enable_gpu: true
+        enable_authelia: true
+        storage_size: "1Ti"
+        mariadb_storage: "50Gi"
+        cache_storage: "100Gi"
+        # Collected during onboarding:
+        family_name: null  # REQUIRED: IT ops identifier (lowercase, alphanumeric)
+        preferred_name: null  # OPTIONAL: Customer-facing display name
+        contact_email: null  # REQUIRED: Domain registration contact
+        admin_password: null  # AUTO-GENERATED: PhotoPrism admin password
+      requires_approval: false  # Auto-approved during onboarding flow
+      estimated_duration: "20 minutes"
+      rollback_plan: "Delete namespace, domain DNS records, notify family"
 
   delete:
     "*":
@@ -185,6 +208,15 @@ observability:
     metrics:
       # No playbook - Prometheus query
       api_endpoint: "/api/v1/metrics/query"
+      requires_approval: false
+      estimated_duration: "< 1 minute"
+
+  check:
+    photoprism_storage:
+      # Check PhotoPrism storage for a family
+      api_endpoint: "/api/v1/photoprism/storage"
+      default_vars:
+        family_name: null  # REQUIRED: Which family to check
       requires_approval: false
       estimated_duration: "< 1 minute"
 

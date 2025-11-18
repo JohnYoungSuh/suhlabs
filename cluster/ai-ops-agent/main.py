@@ -26,6 +26,8 @@ from ai_ops_agent.ml.analytics import MLAnalytics
 from ai_ops_agent.models import (
     Intent, ExecutionPlan, PolicyDecision, UserContext
 )
+from ai_ops_agent.onboarding import OnboardingFlow
+from ai_ops_agent.domain import DomainManager
 
 # Configure logging
 logging.basicConfig(
@@ -54,6 +56,8 @@ policy_engine = PolicyEngine(policies_path=Path("config/mcp-policies.yaml"))
 approval_workflow = ApprovalWorkflow()
 ml_logger = MLLogger(log_dir=ML_LOG_DIR)
 ml_analytics = MLAnalytics(log_dir=ML_LOG_DIR)
+onboarding_flow = OnboardingFlow()
+domain_manager = DomainManager()
 
 logger.info("AI Ops/Sec Agent initialized")
 
@@ -88,6 +92,31 @@ class FeedbackRequest(BaseModel):
     feedback_text: Optional[str] = None
     intent_was_correct: Optional[bool] = None
     corrected_intent: Optional[Dict] = None
+
+
+class PhotoPrismOnboardingRequest(BaseModel):
+    """PhotoPrism onboarding initiation request"""
+    user_id: str = Field(..., description="User ID initiating onboarding")
+    user_email: str = Field(..., description="User email address")
+
+
+class PhotoPrismOnboardingResponse(BaseModel):
+    """PhotoPrism onboarding response from AI bot"""
+    session_id: str
+    message: str
+    step: str
+    completed: bool = False
+    deployment_info: Optional[Dict] = None
+
+
+class PhotoPrismRespondRequest(BaseModel):
+    """User response in onboarding conversation"""
+    user_input: str = Field(..., description="User's response to bot question")
+
+
+class PhotoPrismStorageRequest(BaseModel):
+    """PhotoPrism storage check request"""
+    family_name: str = Field(..., description="Family name to check storage for")
 
 
 # Helper functions
@@ -487,6 +516,180 @@ async def get_satisfaction(days: int = 7):
     except Exception as e:
         logger.error(f"Error getting satisfaction: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+
+
+# PhotoPrism Onboarding Endpoints
+@app.post("/api/v1/photoprism/onboard", response_model=PhotoPrismOnboardingResponse)
+async def start_photoprism_onboarding(request: PhotoPrismOnboardingRequest):
+    """
+    Start PhotoPrism onboarding conversational flow
+
+    This initiates a multi-step conversation to:
+    1. Collect family name
+    2. Check domain availability
+    3. Suggest alternatives if needed
+    4. Collect contact information
+    5. Deploy PhotoPrism with family-specific domain
+    """
+
+    logger.info(f"Starting PhotoPrism onboarding for user: {request.user_id}")
+
+    try:
+        # Generate unique session ID
+        import uuid
+        session_id = str(uuid.uuid4())
+
+        # Start onboarding flow
+        welcome_message = await onboarding_flow.start_onboarding(session_id)
+
+        # Store user context
+        # TODO: Store user_id and user_email in session state
+
+        return PhotoPrismOnboardingResponse(
+            session_id=session_id,
+            message=welcome_message,
+            step="WELCOME",
+            completed=False
+        )
+
+    except Exception as e:
+        logger.error(f"Error starting PhotoPrism onboarding: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to start onboarding: {str(e)}"
+        )
+
+
+@app.post("/api/v1/photoprism/onboard/{session_id}/respond", response_model=PhotoPrismOnboardingResponse)
+async def respond_to_onboarding(session_id: str, request: PhotoPrismRespondRequest, background_tasks: BackgroundTasks):
+    """
+    Process user response in onboarding conversation
+
+    This continues the multi-step onboarding flow, processing user input
+    and guiding them through domain selection and deployment.
+    """
+
+    logger.info(f"Processing onboarding response for session: {session_id}")
+
+    try:
+        # Process user response
+        response_message = await onboarding_flow.process_response(session_id, request.user_input)
+
+        # Get current state
+        state = onboarding_flow._get_state(session_id)
+
+        if state is None:
+            raise HTTPException(
+                status_code=404,
+                detail=f"Session {session_id} not found. Please start a new onboarding."
+            )
+
+        # Check if deployment is ready
+        deployment_info = None
+        if state.current_step.value == "DEPLOYMENT_IN_PROGRESS":
+            # Trigger background deployment
+            # For MVP, we return deployment info for manual execution
+            deployment_info = {
+                "family_name": state.family_name,
+                "preferred_name": state.preferred_name,
+                "domain": state.domain,
+                "contact_email": state.contact_email,
+                "admin_password": state.admin_password,
+                "command": f"FAMILY_NAME={state.family_name} PREFERRED_NAME='{state.preferred_name}' CONTACT_EMAIL={state.contact_email} ./services/photoprism/deploy-family.sh"
+            }
+
+        completed = state.current_step.value == "COMPLETED"
+
+        return PhotoPrismOnboardingResponse(
+            session_id=session_id,
+            message=response_message,
+            step=state.current_step.value,
+            completed=completed,
+            deployment_info=deployment_info
+        )
+
+    except Exception as e:
+        logger.error(f"Error processing onboarding response: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to process response: {str(e)}"
+        )
+
+
+@app.get("/api/v1/photoprism/storage")
+async def check_photoprism_storage(family_name: str):
+    """
+    Check PhotoPrism storage status for a family
+
+    Returns storage usage metrics from Prometheus:
+    - Used storage
+    - Total capacity
+    - Usage percentage
+    - Alert status
+
+    This endpoint is called by AI Ops bot when:
+    - Storage alert triggers at 80%
+    - Family asks: "Check my PhotoPrism storage"
+    """
+
+    logger.info(f"Checking PhotoPrism storage for family: {family_name}")
+
+    try:
+        # Query Prometheus for storage metrics
+        # TODO: Implement actual Prometheus query
+
+        # For MVP, return mock data
+        storage_info = {
+            "family_name": family_name,
+            "namespace": f"photoprism-{family_name}",
+            "storage": {
+                "photos": {
+                    "used_bytes": 750 * 1024**3,  # 750 GB
+                    "capacity_bytes": 1 * 1024**4,  # 1 TB
+                    "usage_percent": 73.2,
+                    "pvc_name": f"minio-photos"
+                },
+                "database": {
+                    "used_bytes": 15 * 1024**3,  # 15 GB
+                    "capacity_bytes": 50 * 1024**3,  # 50 GB
+                    "usage_percent": 30.0,
+                    "pvc_name": f"mariadb-data"
+                },
+                "cache": {
+                    "used_bytes": 40 * 1024**3,  # 40 GB
+                    "capacity_bytes": 100 * 1024**3,  # 100 GB
+                    "usage_percent": 40.0,
+                    "pvc_name": f"photoprism-cache"
+                }
+            },
+            "alerts": {
+                "active": False,
+                "warnings": [],
+                "critical": []
+            },
+            "recommendations": [
+                "Storage is healthy",
+                "Consider archiving photos when usage reaches 80%"
+            ]
+        }
+
+        # Check if alerts should be triggered
+        if storage_info["storage"]["photos"]["usage_percent"] > 80:
+            storage_info["alerts"]["active"] = True
+            storage_info["alerts"]["warnings"].append({
+                "severity": "warning" if storage_info["storage"]["photos"]["usage_percent"] < 95 else "critical",
+                "message": f"Photo storage at {storage_info['storage']['photos']['usage_percent']:.1f}%",
+                "recommendation": "Delete old photos or request storage expansion"
+            })
+
+        return storage_info
+
+    except Exception as e:
+        logger.error(f"Error checking storage: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to check storage: {str(e)}"
+        )
 
 
 if __name__ == "__main__":

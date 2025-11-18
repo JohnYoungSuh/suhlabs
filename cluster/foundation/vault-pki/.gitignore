@@ -1,0 +1,5 @@
+# PKI Generated Files - NEVER COMMIT
+*.crt
+*.pem
+*.key
+*.csr

@@ -1,0 +1,73 @@
+# Ingress with TLS for PhotoPrism
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: photoprism
+  namespace: photoprism
+  annotations:
+    # cert-manager for TLS
+    cert-manager.io/cluster-issuer: "vault-issuer"
+
+    # Nginx ingress annotations
+    nginx.ingress.kubernetes.io/proxy-body-size: "10000m"  # 10GB max upload
+    nginx.ingress.kubernetes.io/proxy-request-buffering: "off"
+    nginx.ingress.kubernetes.io/proxy-buffering: "off"
+    nginx.ingress.kubernetes.io/client-max-body-size: "10000m"
+    nginx.ingress.kubernetes.io/proxy-connect-timeout: "600"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "600"
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "600"
+
+    # Security headers
+    nginx.ingress.kubernetes.io/configuration-snippet: |
+      more_set_headers "X-Frame-Options: SAMEORIGIN";
+      more_set_headers "X-Content-Type-Options: nosniff";
+      more_set_headers "X-XSS-Protection: 1; mode=block";
+      more_set_headers "Referrer-Policy: strict-origin-when-cross-origin";
+
+spec:
+  ingressClassName: nginx
+  tls:
+  - hosts:
+    - photos.familyname.family  # CHANGE THIS to your domain
+    secretName: photoprism-tls
+  rules:
+  - host: photos.familyname.family  # CHANGE THIS to your domain
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: photoprism
+            port:
+              number: 80
+---
+# MinIO Console Ingress (for admin access)
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: minio-console
+  namespace: photoprism
+  annotations:
+    cert-manager.io/cluster-issuer: "vault-issuer"
+    # Require authentication (via Authelia or basic auth)
+    nginx.ingress.kubernetes.io/auth-url: "http://authelia.authelia.svc.cluster.local/api/verify"
+    nginx.ingress.kubernetes.io/auth-signin: "https://auth.familyname.family"
+spec:
+  ingressClassName: nginx
+  tls:
+  - hosts:
+    - minio.photos.familyname.family
+    secretName: minio-console-tls
+  rules:
+  - host: minio.photos.familyname.family
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: minio
+            port:
+              number: 9001

@@ -1,0 +1,68 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+# Example: Smith Family PhotoPrism Deployment
+# This overlay customizes the base template for the Smith family
+
+namespace: photoprism-smith
+
+# Reference base configuration
+resources:
+  - ../../base
+
+# Family-specific configuration
+configMapGenerator:
+  - name: photoprism-config
+    behavior: merge
+    literals:
+      - FAMILY_NAME=smith
+      - PREFERRED_NAME=The Smith Family
+      - PHOTOPRISM_SITE_URL=https://photos.smith.family
+      - PHOTOPRISM_SITE_TITLE=The Smith Family Photos
+      - PHOTOPRISM_SITE_CAPTION=Welcome to our family memories!
+      - PHOTOPRISM_ADMIN_USER=admin@smith.family
+
+# Family-specific labels
+commonLabels:
+  family: smith
+
+# Family-specific annotations
+commonAnnotations:
+  family-name: "smith"
+  preferred-name: "The Smith Family"
+  onboarded-date: "2025-11-18"
+
+# Patches for family-specific customization
+patches:
+  # Patch namespace
+  - target:
+      kind: Namespace
+      name: photoprism-FAMILY_NAME
+    patch: |-
+      - op: replace
+        path: /metadata/name
+        value: photoprism-smith
+
+  # Patch PVC names to include family
+  - target:
+      kind: PersistentVolumeClaim
+      name: minio-photos
+    patch: |-
+      - op: replace
+        path: /metadata/namespace
+        value: photoprism-smith
+
+  # Enable GPU for Smith family (they have GPU nodes)
+  - target:
+      kind: Deployment
+      name: photoprism
+    patch: |-
+      - op: add
+        path: /spec/template/spec/containers/0/resources/limits
+        value:
+          nvidia.com/gpu: "1"
+
+# Replica overrides (Smith family gets 2 replicas for HA)
+replicas:
+  - name: photoprism
+    count: 2

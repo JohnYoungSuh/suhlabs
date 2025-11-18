@@ -80,6 +80,23 @@ provision:
       requires_approval: false
       estimated_duration: "1 minute"
 
+    photoprism:
+      playbook: "services/photoprism/deploy.sh"
+      default_vars:
+        storage_size: "3Ti"
+        mariadb_storage: "50Gi"
+        cache_storage: "100Gi"
+        enable_gpu: false
+        enable_authelia: false
+        domain: "photos.familyname.family"
+        tags:
+          managed_by: "ai-ops-agent"
+          service: "photoprism"
+          project: "suhlabs"
+      requires_approval: true
+      estimated_duration: "15 minutes"
+      rollback_plan: "kubectl delete namespace photoprism"
+
   delete:
     "*":
       playbook: "ansible/playbooks/delete-resource.yml"

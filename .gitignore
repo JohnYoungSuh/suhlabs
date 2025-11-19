@@ -17,6 +17,68 @@ bootstrap/*.log
 __pycache__/
 *.pyc
 .env
+.env.*
+!.env.example
 
-# Vault secrets (NEVER commit!)
+# Virtual Environments
+venv/
+.venv/
+env/
+.env/
+ENV/
+**/venv/
+**/.venv/
+
+# Extracted binaries (regenerate from tarballs)
+crictl
+k9s
+
+# Secrets and Credentials (NEVER commit!)
+# Vault
 cluster/foundation/vault/.vault-keys.json
+*vault*keys*
+*.vault
+
+# Certificates and Keys
+*.key
+*.pem
+*.crt
+*.cer
+*.p12
+*.pfx
+*.jks
+*.p7b
+*.p7c
+*.der
+*.csr
+
+# Tokens and Passwords
+*.token
+*.txt
+!requirements.txt
+!README.txt
+token.txt
+*-token.txt
+*_token.txt
+
+# SSH Keys
+id_rsa
+id_dsa
+id_ecdsa
+id_ed25519
+*.ppk
+
+# Kubernetes Secrets (use templates instead)
+# Pattern: Keep .yaml.template in git, but .yaml files are local only for these specific files
+services/photoprism/kubernetes/02-minio.yaml
+services/photoprism/kubernetes/03-mariadb.yaml
+services/photoprism/kubernetes/04-photoprism.yaml
+services/photoprism/kubernetes/06-authelia.yaml
+
+# Temporary and backup files
+*.bak
+*.tmp
+*.swp
+*.swo
+*~
+.DS_Store

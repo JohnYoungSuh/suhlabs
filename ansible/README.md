@@ -104,6 +104,14 @@ ansible-inventory -i inventory/local.yml --graph
 ### 2. Modules
 
 **What:** Units of work that Ansible executes (e.g., copy file, install package).
+Here is the way to read Ansible task Structure
+  - name: <label>               # 🏷️ Human-readable description (optional but recommended)
+    <module_name>:              # 🧩 The action module (e.g. shell, copy, assert, k8s)
+      <parameter1>: <value>     # 🔧 Parameters specific to that module
+      <parameter2>: <value>
+    register: <var_name>        # 📦 (Optional) Save output for later use
+    when: <condition>           # 🧠 (Optional) Conditional execution
+    tags: [<tag1>, <tag2>]      # 🏷️ (Optional) For selective runs
 
 **Common Modules:**
 

@@ -1,0 +1,266 @@
+# Authelia - SSO/LDAP Authentication for PhotoPrism
+# TEMPLATE FILE - Do not commit secrets!
+# Use scripts/deploy-with-vault.sh to deploy with actual secrets
+# Optional: Deploy if you want centralized authentication
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: authelia
+  labels:
+    name: authelia
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: authelia-config
+  namespace: authelia
+data:
+  configuration.yml: |
+    ---
+    theme: light
+    jwt_secret: ${VAULT_AUTHELIA_JWT_SECRET}
+
+    # Default redirection URL
+    default_redirection_url: https://photos.familyname.family
+
+    # Server configuration
+    server:
+      host: 0.0.0.0
+      port: 9091
+
+    # Logging
+    log:
+      level: info
+      format: text
+
+    # Time-based One-Time Password
+    totp:
+      issuer: familyname.family
+      period: 30
+      skew: 1
+
+    # Authentication backend (file-based for simplicity)
+    # In production, use LDAP or OpenLDAP
+    authentication_backend:
+      file:
+        path: /config/users_database.yml
+        password:
+          algorithm: argon2id
+          iterations: 1
+          salt_length: 16
+          parallelism: 8
+          memory: 64
+
+    # Access control rules
+    access_control:
+      default_policy: deny
+      rules:
+        # Allow family members
+        - domain: photos.familyname.family
+          policy: two_factor
+          subject:
+            - "group:family"
+
+        # Admin access to MinIO
+        - domain: minio.photos.familyname.family
+          policy: two_factor
+          subject:
+            - "group:admins"
+
+    # Session configuration
+    session:
+      name: authelia_session
+      secret: ${VAULT_AUTHELIA_SESSION_SECRET}
+      expiration: 24h
+      inactivity: 8h
+      domain: familyname.family
+
+      redis:
+        host: redis
+        port: 6379
+
+    # Storage (session and TOTP secrets)
+    storage:
+      encryption_key: ${VAULT_AUTHELIA_ENCRYPTION_KEY}
+      local:
+        path: /config/db.sqlite3
+
+    # Notifier (email for password reset)
+    notifier:
+      disable_startup_check: false
+      smtp:
+        username: noreply@familyname.family
+        password: ${VAULT_AUTHELIA_SMTP_PASSWORD}
+        host: smtp.gmail.com  # Or your SMTP server
+        port: 587
+        sender: noreply@familyname.family
+        subject: "[Authelia] {title}"
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: authelia-users
+  namespace: authelia
+type: Opaque
+stringData:
+  # Secrets injected from Vault at deployment time
+  # Vault path: secret/photoprism/authelia/users
+  # Generate password hash with: authelia hash-password 'yourpassword'
+  users_database.yml: |
+    ---
+    users:
+      # Admin user
+      admin:
+        displayname: "Admin"
+        password: "${VAULT_AUTHELIA_ADMIN_PASSWORD_HASH}"
+        email: admin@familyname.family
+        groups:
+          - admins
+          - family
+
+      # Add more family members here
+      # user1:
+      #   displayname: "User One"
+      #   password: "${VAULT_AUTHELIA_USER1_PASSWORD_HASH}"
+      #   email: user1@familyname.family
+      #   groups:
+      #     - family
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: authelia
+  namespace: authelia
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: authelia
+  template:
+    metadata:
+      labels:
+        app: authelia
+    spec:
+      containers:
+      - name: authelia
+        image: authelia/authelia:latest
+        ports:
+        - name: http
+          containerPort: 9091
+        volumeMounts:
+        - name: config
+          mountPath: /config
+        - name: users
+          mountPath: /config/users_database.yml
+          subPath: users_database.yml
+        resources:
+          requests:
+            cpu: 100m
+            memory: 128Mi
+          limits:
+            cpu: 500m
+            memory: 512Mi
+        livenessProbe:
+          httpGet:
+            path: /api/health
+            port: 9091
+          initialDelaySeconds: 30
+          periodSeconds: 10
+        readinessProbe:
+          httpGet:
+            path: /api/health
+            port: 9091
+          initialDelaySeconds: 10
+          periodSeconds: 5
+      volumes:
+      - name: config
+        configMap:
+          name: authelia-config
+      - name: users
+        secret:
+          secretName: authelia-users
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: authelia
+  namespace: authelia
+spec:
+  type: ClusterIP
+  ports:
+  - name: http
+    port: 9091
+    targetPort: 9091
+  selector:
+    app: authelia
+---
+# Redis for Authelia sessions
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: redis
+  namespace: authelia
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: redis
+  template:
+    metadata:
+      labels:
+        app: redis
+    spec:
+      containers:
+      - name: redis
+        image: redis:7-alpine
+        ports:
+        - name: redis
+          containerPort: 6379
+        resources:
+          requests:
+            cpu: 100m
+            memory: 128Mi
+          limits:
+            cpu: 500m
+            memory: 512Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: redis
+  namespace: authelia
+spec:
+  type: ClusterIP
+  ports:
+  - name: redis
+    port: 6379
+    targetPort: 6379
+  selector:
+    app: redis
+---
+# Authelia Ingress
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: authelia
+  namespace: authelia
+  annotations:
+    cert-manager.io/cluster-issuer: "vault-issuer"
+spec:
+  ingressClassName: nginx
+  tls:
+  - hosts:
+    - auth.familyname.family
+    secretName: authelia-tls
+  rules:
+  - host: auth.familyname.family
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: authelia
+            port:
+              number: 9091

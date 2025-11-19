@@ -1,0 +1,114 @@
+# Prometheus Monitoring for PhotoPrism - Per Family
+---
+# ServiceMonitor for Prometheus to scrape PhotoPrism metrics
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: photoprism
+  namespace: photoprism-FAMILY_NAME
+  labels:
+    app: photoprism
+    family: FAMILY_NAME
+spec:
+  selector:
+    matchLabels:
+      app: photoprism
+      family: FAMILY_NAME
+  endpoints:
+  - port: http
+    interval: 30s
+    path: /metrics
+---
+# PrometheusRule for storage alerts
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: photoprism-storage-alerts
+  namespace: photoprism-FAMILY_NAME
+  labels:
+    prometheus: kube-prometheus
+    role: alert-rules
+    family: FAMILY_NAME
+spec:
+  groups:
+  - name: photoprism-storage-FAMILY_NAME
+    interval: 5m
+    rules:
+    - alert: PhotoPrismStorageHigh
+      expr: |
+        (
+          sum(kubelet_volume_stats_used_bytes{namespace="photoprism-FAMILY_NAME",persistentvolumeclaim="minio-photos"})
+          /
+          sum(kubelet_volume_stats_capacity_bytes{namespace="photoprism-FAMILY_NAME",persistentvolumeclaim="minio-photos"})
+        ) * 100 > 80
+      for: 10m
+      labels:
+        severity: warning
+        component: storage
+        family: FAMILY_NAME
+        family_facing: "true"
+      annotations:
+        summary: "PhotoPrism storage at 80% capacity for PREFERRED_NAME"
+        description: "Photo storage usage high - action recommended"
+        ai_ops_notify: "true"  # Trigger AI Ops bot notification
+        ai_ops_message: |
+          📊 **Storage Alert for PREFERRED_NAME**
+
+          Hi! Your PhotoPrism photo storage has reached 80% capacity.
+
+          **What you can do:**
+          1. Delete duplicates or unwanted photos
+          2. Export old photos to external storage
+          3. Ask me to expand storage: "Expand my PhotoPrism storage to 2TB"
+
+          Need help? Just ask me: "How do I free up photo storage?"
+
+    - alert: PhotoPrismStorageCritical
+      expr: |
+        (
+          sum(kubelet_volume_stats_used_bytes{namespace="photoprism-FAMILY_NAME",persistentvolumeclaim="minio-photos"})
+          /
+          sum(kubelet_volume_stats_capacity_bytes{namespace="photoprism-FAMILY_NAME",persistentvolumeclaim="minio-photos"})
+        ) * 100 > 95
+      for: 5m
+      labels:
+        severity: critical
+        component: storage
+        family: FAMILY_NAME
+        family_facing: "true"
+      annotations:
+        summary: "PhotoPrism storage critically low for PREFERRED_NAME"
+        description: "Photo storage at 95% - immediate action required"
+        ai_ops_notify: "true"
+        ai_ops_priority: "urgent"
+        ai_ops_message: |
+          🚨 **URGENT: Photo Storage Almost Full!**
+
+          PREFERRED_NAME, your PhotoPrism storage is at 95% - this is critical!
+
+          **Action required immediately:**
+          ⛔ Stop uploading new photos
+          🗑️ Delete unwanted photos now
+          💾 Request storage expansion: "Expand my storage urgently"
+
+          Without action, you won't be able to upload new photos soon!
+
+    - alert: PhotoPrismDown
+      expr: up{job="photoprism",namespace="photoprism-FAMILY_NAME"} == 0
+      for: 5m
+      labels:
+        severity: critical
+        component: app
+        family: FAMILY_NAME
+        family_facing: "true"
+      annotations:
+        summary: "PhotoPrism service is down for PREFERRED_NAME"
+        description: "Family photo service is not responding"
+        ai_ops_notify: "true"
+        ai_ops_message: |
+          ⚠️ **Your PhotoPrism service is currently unavailable**
+
+          Don't worry PREFERRED_NAME - your photos are safe! The service just needs to restart.
+
+          I'm working on bringing it back online. You should be able to access
+          your photos again in a few minutes.

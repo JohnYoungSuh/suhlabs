@@ -1,0 +1,133 @@
+# Pre-commit hooks for security and code quality
+# Install: pip install pre-commit && pre-commit install
+# Run manually: pre-commit run --all-files
+
+repos:
+  # Detect secrets and credentials
+  - repo: https://github.com/Yelp/detect-secrets
+    rev: v1.4.0
+    hooks:
+      - id: detect-secrets
+        args: ['--baseline', '.secrets.baseline']
+        exclude: |
+          (?x)^(
+              .*\.template$|
+              .*package-lock\.json$|
+              .*\.lock$
+          )$
+
+  # Gitleaks - detect hardcoded secrets
+  - repo: https://github.com/gitleaks/gitleaks
+    rev: v8.18.1
+    hooks:
+      - id: gitleaks
+        exclude: |
+          (?x)^(
+              .*\.template$
+          )$
+
+  # Check for files that should not be committed
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v4.5.0
+    hooks:
+      # Prevent large files from being committed
+      - id: check-added-large-files
+        args: ['--maxkb=1000']
+
+      # Check for files that would conflict in case-insensitive filesystems
+      - id: check-case-conflict
+
+      # Check for merge conflicts
+      - id: check-merge-conflict
+
+      # Check for private keys
+      - id: detect-private-key
+
+      # Check YAML syntax
+      - id: check-yaml
+        exclude: |
+          (?x)^(
+              .*\.template$
+          )$
+        args: ['--allow-multiple-documents']
+
+      # Check JSON syntax
+      - id: check-json
+
+      # Trim trailing whitespace
+      - id: trailing-whitespace
+        args: [--markdown-linebreak-ext=md]
+
+      # Ensure files end with newline
+      - id: end-of-file-fixer
+
+      # Check for AWS credentials
+      - id: detect-aws-credentials
+        args: ['--allow-missing-credentials']
+
+  # Custom hook: Check for specific patterns
+  - repo: https://github.com/pre-commit/pygrep-hooks
+    rev: v1.10.0
+    hooks:
+      # Detect common password patterns
+      - id: python-check-blanket-noqa
+      - id: text-unicode-replacement-char
+
+  # YAML linting
+  - repo: https://github.com/adrienverge/yamllint
+    rev: v1.33.0
+    hooks:
+      - id: yamllint
+        args: ['-d', '{extends: default, rules: {line-length: {max: 200}, comments: {min-spaces-from-content: 1}}}']
+        exclude: |
+          (?x)^(
+              .*\.template$
+          )$
+
+  # Terraform security scanning (if using Terraform)
+  - repo: https://github.com/antonbabenko/pre-commit-terraform
+    rev: v1.86.0
+    hooks:
+      - id: terraform_fmt
+      - id: terraform_validate
+      - id: terraform_tfsec
+        args:
+          - --args=--minimum-severity=MEDIUM
+
+  # Ansible linting
+  - repo: https://github.com/ansible/ansible-lint
+    rev: v6.22.1
+    hooks:
+      - id: ansible-lint
+        files: \.(yaml|yml)$
+        exclude: |
+          (?x)^(
+              .*\.template$|
+              cluster/|
+              services/
+          )$
+
+# Custom local hooks
+  - repo: local
+    hooks:
+      # Check for Kubernetes secret files that shouldn't be committed
+      - id: check-k8s-secrets
+        name: Check for Kubernetes secrets
+        entry: bash -c 'if git diff --cached --name-only | grep -E "services/photoprism/kubernetes/(02-minio|03-mariadb|04-photoprism|06-authelia)\.yaml$"; then echo "ERROR: Do not commit .yaml files with secrets! Use .yaml.template instead."; exit 1; fi'
+        language: system
+        pass_filenames: false
+
+      # Check for placeholder patterns in non-template files
+      - id: check-vault-placeholders
+        name: Check for unreplaced Vault placeholders
+        entry: bash -c 'if git diff --cached --name-only | grep -E "\.yaml$" | xargs grep -l "\${VAULT_" 2>/dev/null; then echo "ERROR: Found unreplaced Vault placeholders in committed files!"; exit 1; fi'
+        language: system
+        pass_filenames: false
+
+      # Warn about certificate files
+      - id: check-certificates
+        name: Check for certificate files
+        entry: bash -c 'if git diff --cached --name-only | grep -E "\.(key|pem|crt|cer|p12|pfx)$"; then echo "WARNING: Committing certificate files. Ensure they are not private keys!"; fi'
+        language: system
+        pass_filenames: false
+        verbose: true

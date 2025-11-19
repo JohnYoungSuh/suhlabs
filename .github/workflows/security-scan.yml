@@ -1,0 +1,277 @@
+name: Security Scanning
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+    branches: [main, master]
+  schedule:
+    # Run daily security scans at 2 AM UTC
+    - cron: '0 2 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  security-events: write  # For uploading SARIF results
+
+env:
+  REGISTRY: ghcr.io
+
+jobs:
+  # ============================================================================
+  # Secret Scanning
+  # ============================================================================
+  secret-scan:
+    name: Scan for Secrets
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # Full history for better detection
+
+      - name: TruffleHog Secret Scan
+        uses: trufflesecurity/trufflehog@main
+        with:
+          path: ./
+          base: ${{ github.event.repository.default_branch }}
+          head: HEAD
+          extra_args: --debug --only-verified
+
+      - name: GitLeaks Secret Scan
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITLEAKS_LICENSE: ${{ secrets.GITLEAKS_LICENSE }}
+
+  # ============================================================================
+  # Container Vulnerability Scanning - Trivy
+  # ============================================================================
+  trivy-scan:
+    name: Trivy Container Scan
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build AI Ops Agent image
+        uses: docker/build-push-action@v5
+        with:
+          context: cluster/ai-ops-agent
+          load: true
+          tags: ai-ops-agent:${{ github.sha }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Run Trivy vulnerability scanner
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: ai-ops-agent:${{ github.sha }}
+          format: 'sarif'
+          output: 'trivy-results.sarif'
+          severity: 'CRITICAL,HIGH,MEDIUM'
+          vuln-type: 'os,library'
+          exit-code: '0'  # Don't fail the build
+
+      - name: Upload Trivy results to GitHub Security
+        uses: github/codeql-action/upload-sarif@v3
+        if: always()
+        with:
+          sarif_file: 'trivy-results.sarif'
+
+      - name: Run Trivy filesystem scan
+        uses: aquasecurity/trivy-action@master
+        with:
+          scan-type: 'fs'
+          scan-ref: '.'
+          format: 'table'
+          severity: 'CRITICAL,HIGH'
+          exit-code: '0'
+
+      - name: Run Trivy config scan
+        uses: aquasecurity/trivy-action@master
+        with:
+          scan-type: 'config'
+          scan-ref: '.'
+          format: 'table'
+          exit-code: '0'
+
+  # ============================================================================
+  # Container Vulnerability Scanning - Grype
+  # ============================================================================
+  grype-scan:
+    name: Grype Vulnerability Scan
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build AI Ops Agent image
+        uses: docker/build-push-action@v5
+        with:
+          context: cluster/ai-ops-agent
+          load: true
+          tags: ai-ops-agent:${{ github.sha }}
+          cache-from: type=gha
+
+      - name: Install Grype
+        run: |
+          curl -sSfL https://raw.githubusercontent.com/anchore/grype/main/install.sh | sh -s -- -b /usr/local/bin
+
+      - name: Scan container image with Grype
+        run: |
+          grype ai-ops-agent:${{ github.sha }} \
+            --fail-on high \
+            --output table \
+            --output json --file grype-results.json || true
+
+      - name: Upload Grype results
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: grype-results
+          path: grype-results.json
+          retention-days: 30
+
+  # ============================================================================
+  # Kubernetes Manifest Security Scanning
+  # ============================================================================
+  kubesec-scan:
+    name: Kubesec Security Scan
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install kubesec
+        run: |
+          wget -q https://github.com/controlplaneio/kubesec/releases/download/v2.13.0/kubesec_linux_amd64.tar.gz
+          tar -xzf kubesec_linux_amd64.tar.gz
+          sudo mv kubesec /usr/local/bin/
+          kubesec version
+
+      - name: Scan Kubernetes manifests
+        run: |
+          echo "Scanning Kubernetes manifests for security issues..."
+          find cluster/ -name "*.yaml" -type f | while read file; do
+            echo "Scanning: $file"
+            kubesec scan "$file" || true
+          done
+
+  # ============================================================================
+  # Infrastructure as Code Security Scanning
+  # ============================================================================
+  tfsec-scan:
+    name: Terraform Security Scan
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Run tfsec
+        uses: aquasecurity/tfsec-action@v1.0.3
+        with:
+          working_directory: infra
+          soft_fail: true
+
+      - name: Run tfsec with SARIF output
+        uses: aquasecurity/tfsec-action@v1.0.3
+        with:
+          working_directory: infra
+          format: sarif
+          soft_fail: true
+
+  # ============================================================================
+  # Dependency Scanning
+  # ============================================================================
+  dependency-scan:
+    name: Dependency Vulnerability Scan
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: |
+          if [ -f cluster/ai-ops-agent/requirements.txt ]; then
+            pip install -r cluster/ai-ops-agent/requirements.txt
+          fi
+
+      - name: Run safety check
+        run: |
+          pip install safety
+          safety check --json --output safety-report.json || true
+        continue-on-error: true
+
+      - name: Upload safety results
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: safety-results
+          path: safety-report.json
+          retention-days: 30
+
+  # ============================================================================
+  # YAML and Shell Linting with Security Focus
+  # ============================================================================
+  lint-security:
+    name: Lint for Security Issues
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: ShellCheck
+        uses: ludeeus/action-shellcheck@master
+        with:
+          scandir: './cluster'
+          severity: warning
+
+      - name: YAML Lint
+        uses: ibiqlik/action-yamllint@v3
+        with:
+          file_or_dir: cluster/
+          strict: false
+
+  # ============================================================================
+  # Security Summary
+  # ============================================================================
+  security-summary:
+    name: Security Scan Summary
+    runs-on: ubuntu-latest
+    needs: [secret-scan, trivy-scan, grype-scan, kubesec-scan, tfsec-scan, dependency-scan]
+    if: always()
+    steps:
+      - name: Generate security summary
+        run: |
+          echo "# Security Scan Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Scan Type | Status |" >> $GITHUB_STEP_SUMMARY
+          echo "|-----------|--------|" >> $GITHUB_STEP_SUMMARY
+          echo "| Secret Scan | ${{ needs.secret-scan.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Trivy Container Scan | ${{ needs.trivy-scan.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Grype Vulnerability Scan | ${{ needs.grype-scan.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Kubesec K8s Scan | ${{ needs.kubesec-scan.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Terraform Security Scan | ${{ needs.tfsec-scan.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Dependency Scan | ${{ needs.dependency-scan.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "See individual job results for detailed findings." >> $GITHUB_STEP_SUMMARY
+
+      - name: Check for critical failures
+        run: |
+          if [ "${{ needs.secret-scan.result }}" = "failure" ]; then
+            echo "⚠️ Secret scan detected issues!"
+            exit 1
+          fi
+          echo "✅ Security scans completed"

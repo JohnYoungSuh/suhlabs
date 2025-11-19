@@ -64,6 +64,8 @@ jobs:
     permissions:
       contents: read
       packages: write
+      attestations: write
+      id-token: write
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -88,10 +90,11 @@ jobs:
             type=ref,event=branch
             type=ref,event=pr
             type=semver,pattern={{version}}
-            type=sha,prefix={{branch}}-
+            type=sha,prefix=sha-
             type=raw,value=latest,enable={{is_default_branch}}
 
       - name: Build and push AI Ops Agent
+        id: push
         uses: docker/build-push-action@v5
         with:
           context: cluster/ai-ops-agent
@@ -100,6 +103,16 @@ jobs:
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
+          provenance: mode=max
+          sbom: false
+
+      - name: Generate artifact attestation
+        if: github.event_name != 'pull_request'
+        uses: actions/attest-build-provenance@v1
+        with:
+          subject-name: ${{ env.REGISTRY }}/${{ github.repository }}/ai-ops-agent
+          subject-digest: ${{ steps.push.outputs.digest }}
+          push-to-registry: true
 
   # ============================================================================
   # Infrastructure Tests
@@ -306,3 +319,4 @@ jobs:
             exit 1
           fi
           echo "CI pipeline successful!"
+>>>>>>> origin/main

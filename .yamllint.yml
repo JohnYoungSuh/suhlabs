@@ -1,0 +1,62 @@
+---
+# YAML Lint Configuration for AIOps Substrate
+# Ensures consistent YAML formatting across Kubernetes manifests and configs
+
+extends: default
+
+rules:
+  # Line length - Allow longer lines for Kubernetes manifests
+  line-length:
+    max: 120
+    level: warning
+
+  # Indentation - Standard 2-space indentation
+  indentation:
+    spaces: 2
+    indent-sequences: true
+    check-multi-line-strings: false
+
+  # Comments - Allow comments without space after #
+  comments:
+    min-spaces-from-content: 1
+    level: warning
+
+  # Truthy values - Allow yes/no/on/off in addition to true/false
+  truthy:
+    allowed-values: ['true', 'false', 'yes', 'no', 'on', 'off']
+    check-keys: false
+
+  # Document start/end - Not required
+  document-start: disable
+  document-end: disable
+
+  # Empty values - Allow
+  empty-values:
+    forbid-in-block-mappings: false
+    forbid-in-flow-mappings: false
+
+  # New line at end of file - Recommended
+  new-line-at-end-of-file: enable
+
+  # Trailing spaces - Not allowed
+  trailing-spaces: enable
+
+  # Key duplicates - Not allowed
+  key-duplicates: enable
+
+  # Brackets - Consistent spacing
+  brackets:
+    min-spaces-inside: 0
+    max-spaces-inside: 0
+
+  # Braces - Consistent spacing
+  braces:
+    min-spaces-inside: 0
+    max-spaces-inside: 1
+
+ignore: |
+  .github/
+  venv/
+  .terraform/
+  node_modules/
+  *.bundle

@@ -1,0 +1,138 @@
+# Gitleaks configuration for detecting secrets
+# https://github.com/gitleaks/gitleaks
+
+title = "Gitleaks Configuration for SuhLabs"
+
+# Allowlist files/paths that should be ignored
+[allowlist]
+description = "Allowlisted files and patterns"
+paths = [
+    '''\.template$''',
+    '''\.md$''',
+    '''\.example$''',
+    '''venv/''',
+    '''.venv/''',
+    '''node_modules/''',
+    '''package-lock\.json$''',
+    '''\.lock$''',
+]
+
+# Allowlist specific findings (use with caution!)
+# Example: Add baseline findings that are false positives
+regexes = [
+    '''example\.com''',
+    '''changeme''',
+    '''change-me''',
+    '''your-password''',
+    '''your-token''',
+]
+
+# Custom rules
+[[rules]]
+id = "vault-placeholder"
+description = "Ensure Vault placeholders are not replaced in committed files"
+regex = '''\${VAULT_[A-Z_]+}'''
+path = '''\.yaml$'''
+[rules.allowlist]
+paths = [
+    '''\.template$''',
+]
+
+[[rules]]
+id = "generic-api-key"
+description = "Generic API Key"
+regex = '''(?i)(api[_-]?key|apikey)['":\s=]+['"a-zA-Z0-9]{32,}'''
+entropy = 3.5
+
+[[rules]]
+id = "github-token"
+description = "GitHub Token"
+regex = '''ghp_[a-zA-Z0-9]{36}'''
+
+[[rules]]
+id = "github-oauth"
+description = "GitHub OAuth Token"
+regex = '''gho_[a-zA-Z0-9]{36}'''
+
+[[rules]]
+id = "github-app-token"
+description = "GitHub App Token"
+regex = '''(ghu|ghs)_[a-zA-Z0-9]{36}'''
+
+[[rules]]
+id = "github-pat"
+description = "GitHub Personal Access Token"
+regex = '''github_pat_[a-zA-Z0-9]{22}_[a-zA-Z0-9]{59}'''
+
+[[rules]]
+id = "openai-api-key"
+description = "OpenAI API Key"
+regex = '''sk-[a-zA-Z0-9]{48}'''
+
+[[rules]]
+id = "anthropic-api-key"
+description = "Anthropic API Key"
+regex = '''sk-ant-[a-zA-Z0-9\-]{95}'''
+
+[[rules]]
+id = "aws-access-key"
+description = "AWS Access Key"
+regex = '''(?i)aws[_-]?access[_-]?key[_-]?id['":\s=]+['"A-Z0-9]{20}'''
+
+[[rules]]
+id = "aws-secret-key"
+description = "AWS Secret Key"
+regex = '''(?i)aws[_-]?secret[_-]?access[_-]?key['":\s=]+['"a-zA-Z0-9/+=]{40}'''
+
+[[rules]]
+id = "slack-token"
+description = "Slack Token"
+regex = '''xox[baprs]-[0-9]{10,13}-[0-9]{10,13}-[a-zA-Z0-9]{24,32}'''
+
+[[rules]]
+id = "slack-webhook"
+description = "Slack Webhook"
+regex = '''https://hooks\.slack\.com/services/T[a-zA-Z0-9_]{8,10}/B[a-zA-Z0-9_]{8,10}/[a-zA-Z0-9_]{24}'''
+
+[[rules]]
+id = "private-key"
+description = "Private Key"
+regex = '''-----BEGIN (RSA|DSA|EC|OPENSSH|ENCRYPTED|PGP) PRIVATE KEY'''
+
+[[rules]]
+id = "jwt-token"
+description = "JWT Token"
+regex = '''eyJ[a-zA-Z0-9_-]*\.eyJ[a-zA-Z0-9_-]*\.[a-zA-Z0-9_-]*'''
+entropy = 4.0
+
+[[rules]]
+id = "generic-password"
+description = "Generic Password in Config"
+regex = '''(?i)(password|passwd|pwd)['":\s=]+['"][^'"]{8,}['"]'''
+[rules.allowlist]
+regexes = [
+    '''changeme''',
+    '''change-me''',
+    '''your-password''',
+    '''example''',
+    '''VAULT_''',
+]
+paths = [
+    '''\.template$''',
+    '''\.md$''',
+]
+
+[[rules]]
+id = "database-connection-string"
+description = "Database Connection String"
+regex = '''(?i)(mysql|postgres|mongodb|redis)://[a-zA-Z0-9_]+:[^@\s]+@[a-zA-Z0-9.-]+'''
+
+[[rules]]
+id = "vault-token"
+description = "HashiCorp Vault Token"
+regex = '''(?i)vault[_-]?token['":\s=]+['"][a-zA-Z0-9.-]{20,}['"]'''
+
+[[rules]]
+id = "certificate-key"
+description = "Certificate Private Key in YAML"
+regex = '''(?i)certificate[_-]?key['":\s=]+['"][^'"]{100,}['"]'''

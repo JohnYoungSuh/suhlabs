@@ -80,12 +80,15 @@ jobs:
           registry: ${{ env.REGISTRY }}
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
+      - name: prepare repository name (lowercase for docker)
+        id: repo
+        run: echo "name=$(echo '${{ github.repository }}' | tr '[:upper:]' '[:lower:]')" >> $GITHUB_OUTPUT
 
       - name: Extract metadata for AI Ops Agent
         id: meta
         uses: docker/metadata-action@v5
         with:
-          images: ${{ env.REGISTRY }}/${{ github.repository }}/ai-ops-agent
+          images: ${{ env.REGISTRY }}/${{ steps.repo.outputs.name }}/ai-ops-agent
           tags: |
             type=ref,event=branch
             type=ref,event=pr

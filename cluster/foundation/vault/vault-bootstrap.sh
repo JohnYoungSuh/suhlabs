@@ -55,7 +55,8 @@ check_vault_pod() {
     fi
 
     # Check if pod is running
-    local pod_status=$(kubectl get pod "$POD_NAME" -n "$NAMESPACE" -o jsonpath='{.status.phase}')
+    local pod_status
+    pod_status=$(kubectl get pod "$POD_NAME" -n "$NAMESPACE" -o jsonpath='{.status.phase}')
     if [[ "$pod_status" != "Running" ]]; then
         log_error "Vault pod is not running (status: $pod_status)"
         kubectl get pod "$POD_NAME" -n "$NAMESPACE"
@@ -65,13 +66,15 @@ check_vault_pod() {
 
 # Check if Vault is initialized
 is_vault_initialized() {
-    local init_status=$(kubectl exec -n "$NAMESPACE" "$POD_NAME" -- vault status -format=json 2>/dev/null | jq -r '.initialized' 2>/dev/null || echo "false")
+    local init_status
+    init_status=$(kubectl exec -n "$NAMESPACE" "$POD_NAME" -- vault status -format=json 2>/dev/null | jq -r '.initialized' 2>/dev/null || echo "false")
     [[ "$init_status" == "true" ]]
 }
 
 # Check if Vault is sealed
 is_vault_sealed() {
-    local seal_status=$(kubectl exec -n "$NAMESPACE" "$POD_NAME" -- vault status -format=json 2>/dev/null | jq -r '.sealed' 2>/dev/null || echo "true")
+    local seal_status
+    seal_status=$(kubectl exec -n "$NAMESPACE" "$POD_NAME" -- vault status -format=json 2>/dev/null | jq -r '.sealed' 2>/dev/null || echo "true")
     [[ "$seal_status" == "true" ]]
 }
 
@@ -93,7 +96,8 @@ initialize_vault() {
     fi
 
     log_info "Running vault operator init..."
-    local init_output=$(kubectl exec -n "$NAMESPACE" "$POD_NAME" -- vault operator init -format=json)
+    local init_output
+    init_output=$(kubectl exec -n "$NAMESPACE" "$POD_NAME" -- vault operator init -format=json)
 
     # Save keys and token to file
     echo "$init_output" > "$KEYS_FILE"
@@ -118,12 +122,14 @@ initialize_vault() {
 
     echo "Unseal Keys:"
     for i in {0..4}; do
-        local key=$(echo "$init_output" | jq -r ".unseal_keys_b64[$i]")
+        local key
+        key=$(echo "$init_output" | jq -r ".unseal_keys_b64[$i]")
         echo "  Key $((i+1)): $key"
     done
 
     echo ""
-    local root_token=$(echo "$init_output" | jq -r '.root_token')
+    local root_token
+    root_token=$(echo "$init_output" | jq -r '.root_token')
     echo "Root Token: $root_token"
 
     echo ""
@@ -153,13 +159,15 @@ unseal_vault() {
 
     # Unseal with first 3 keys
     for i in {0..2}; do
-        local key=$(jq -r ".unseal_keys_b64[$i]" "$KEYS_FILE")
+        local key
+        key=$(jq -r ".unseal_keys_b64[$i]" "$KEYS_FILE")
         log_info "Using unseal key $((i+1))/3..."
 
         kubectl exec -n "$NAMESPACE" "$POD_NAME" -- vault operator unseal "$key" > /dev/null
 
         # Check progress
-        local progress=$(kubectl exec -n "$NAMESPACE" "$POD_NAME" -- vault status -format=json 2>/dev/null | jq -r '.unseal_progress' 2>/dev/null || echo "0")
+        local progress
+        progress=$(kubectl exec -n "$NAMESPACE" "$POD_NAME" -- vault status -format=json 2>/dev/null | jq -r '.unseal_progress' 2>/dev/null || echo "0")
         log_info "Unseal progress: $progress/3"
     done
 
@@ -186,7 +194,8 @@ seal_vault() {
         exit 1
     fi
 
-    local root_token=$(jq -r '.root_token' "$KEYS_FILE")
+    local root_token
+    root_token=$(jq -r '.root_token' "$KEYS_FILE")
 
     log_warn "⚠️  This will seal Vault and make it inaccessible until unsealed"
     read -p "Are you sure you want to seal Vault? (yes/no): " confirm
@@ -224,7 +233,8 @@ show_status() {
     echo ""
     if [[ -f "$KEYS_FILE" ]]; then
         log_info "Keys file: ✅ Found at $KEYS_FILE"
-        local root_token=$(jq -r '.root_token' "$KEYS_FILE" 2>/dev/null || echo "error")
+        local root_token
+        root_token=$(jq -r '.root_token' "$KEYS_FILE" 2>/dev/null || echo "error")
         if [[ "$root_token" != "error" && "$root_token" != "null" ]]; then
             echo ""
             log_info "Root Token: $root_token"
@@ -245,7 +255,8 @@ show_token() {
         exit 1
     fi
 
-    local root_token=$(jq -r '.root_token' "$KEYS_FILE")
+    local root_token
+    root_token=$(jq -r '.root_token' "$KEYS_FILE")
     echo ""
     echo "Root Token: $root_token"
     echo ""

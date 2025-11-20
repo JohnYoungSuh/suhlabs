@@ -142,6 +142,30 @@ Threshold: 3
 Unseal Progress: 0/3
 ```
 
+### Auto-Unseal for Dev Environments
+
+To avoid manual unsealing after every dev box restart, use the auto-unseal scripts:
+
+**One-time setup:**
+```bash
+# After initializing Vault, save keys to Kubernetes secret
+./save-keys-to-k8s.sh .vault-keys.json
+```
+
+**Auto-unseal after restarts:**
+```bash
+# Run this whenever your dev box restarts and Vault is sealed
+./auto-unseal.sh
+```
+
+**Benefits:**
+- ✅ Keys stored in Kubernetes (not in Git)
+- ✅ One command to unseal
+- ✅ No manual key entry
+- ✅ Secure - keys never leave your cluster
+
+**Note:** Keep a backup of `.vault-keys.json` in a secure location (password manager, encrypted drive, etc.). The `.gitignore` already excludes these files from Git.
+
 ## Bootstrap Script (vault-bootstrap.sh)
 
 The `vault-bootstrap.sh` script automates initialization, unsealing, and sealing operations with secure key management.

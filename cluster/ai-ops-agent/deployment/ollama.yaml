@@ -32,35 +32,35 @@ spec:
         component: llm-runtime
     spec:
       containers:
-      - name: ollama
-        image: ollama/ollama:latest
-        ports:
-        - name: http
-          containerPort: 11434
-        env:
-        - name: OLLAMA_HOST
-          value: "0.0.0.0"
-        resources:
-          requests:
-            cpu: 2000m
-            memory: 8Gi
-          limits:
-            cpu: 4000m
-            memory: 16Gi
-        volumeMounts:
-        - name: models
-          mountPath: /root/.ollama
-        # TODO: Add GPU support for better performance
-        # resources:
-        #   limits:
-        #     nvidia.com/gpu: 1
+        - name: ollama
+          image: ollama/ollama:latest
+          ports:
+            - name: http
+              containerPort: 11434
+          env:
+            - name: OLLAMA_HOST
+              value: "0.0.0.0"
+          resources:
+            requests:
+              cpu: 2000m
+              memory: 8Gi
+            limits:
+              cpu: 4000m
+              memory: 16Gi
+          volumeMounts:
+            - name: models
+              mountPath: /root/.ollama
+            # TODO: Add GPU support for better performance
+            # resources:
+            #   limits:
+            #     nvidia.com/gpu: 1
       volumes:
-      - name: models
-        persistentVolumeClaim:
-          claimName: ollama-models
-      # TODO: Add node selector for GPU nodes
-      # nodeSelector:
-      #   gpu: "true"
+        - name: models
+          persistentVolumeClaim:
+            claimName: ollama-models
+        # TODO: Add node selector for GPU nodes
+        # nodeSelector:
+        #   gpu: "true"
 ---
 apiVersion: v1
 kind: Service
@@ -72,9 +72,9 @@ metadata:
 spec:
   type: ClusterIP
   ports:
-  - name: http
-    port: 11434
-    targetPort: 11434
+    - name: http
+      port: 11434
+      targetPort: 11434
   selector:
     app: ollama
 ---
@@ -88,18 +88,18 @@ spec:
   template:
     spec:
       containers:
-      - name: model-puller
-        image: ollama/ollama:latest
-        command:
-        - /bin/sh
-        - -c
-        - |
-          echo "Pulling Ollama models..."
-          ollama pull mistral
-          ollama pull nomic-embed-text
-          echo "Models pulled successfully"
-        env:
-        - name: OLLAMA_HOST
-          value: "http://ollama:11434"
+        - name: model-puller
+          image: ollama/ollama:latest
+          command:
+            - /bin/sh
+            - -c
+            - |
+              echo "Pulling Ollama models..."
+              ollama pull mistral
+              ollama pull nomic-embed-text
+              echo "Models pulled successfully"
+          env:
+            - name: OLLAMA_HOST
+              value: "http://ollama:11434"
       restartPolicy: OnFailure
   backoffLimit: 3

@@ -34,8 +34,6 @@ jobs:
         uses: trufflesecurity/trufflehog@main
         with:
           path: ./
-          base: ${{ github.event.repository.default_branch }}
-          head: HEAD
           extra_args: --debug --only-verified --config=.trufflehog.yaml
 
       - name: GitLeaks Secret Scan

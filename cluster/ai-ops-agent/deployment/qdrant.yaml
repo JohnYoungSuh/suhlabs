@@ -32,44 +32,44 @@ spec:
         component: vector-db
     spec:
       containers:
-      - name: qdrant
-        image: qdrant/qdrant:v1.7.0
-        ports:
-        - name: http
-          containerPort: 6333
-        - name: grpc
-          containerPort: 6334
-        env:
-        - name: QDRANT__SERVICE__HTTP_PORT
-          value: "6333"
-        - name: QDRANT__SERVICE__GRPC_PORT
-          value: "6334"
-        resources:
-          requests:
-            cpu: 500m
-            memory: 1Gi
-          limits:
-            cpu: 2000m
-            memory: 4Gi
-        volumeMounts:
-        - name: storage
-          mountPath: /qdrant/storage
-        livenessProbe:
-          httpGet:
-            path: /healthz
-            port: 6333
-          initialDelaySeconds: 30
-          periodSeconds: 10
-        readinessProbe:
-          httpGet:
-            path: /readyz
-            port: 6333
-          initialDelaySeconds: 5
-          periodSeconds: 5
+        - name: qdrant
+          image: qdrant/qdrant:v1.7.0
+          ports:
+            - name: http
+              containerPort: 6333
+            - name: grpc
+              containerPort: 6334
+          env:
+            - name: QDRANT__SERVICE__HTTP_PORT
+              value: "6333"
+            - name: QDRANT__SERVICE__GRPC_PORT
+              value: "6334"
+          resources:
+            requests:
+              cpu: 500m
+              memory: 1Gi
+            limits:
+              cpu: 2000m
+              memory: 4Gi
+          volumeMounts:
+            - name: storage
+              mountPath: /qdrant/storage
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: 6333
+            initialDelaySeconds: 30
+            periodSeconds: 10
+          readinessProbe:
+            httpGet:
+              path: /readyz
+              port: 6333
+            initialDelaySeconds: 5
+            periodSeconds: 5
       volumes:
-      - name: storage
-        persistentVolumeClaim:
-          claimName: qdrant-storage
+        - name: storage
+          persistentVolumeClaim:
+            claimName: qdrant-storage
 ---
 apiVersion: v1
 kind: Service
@@ -81,11 +81,11 @@ metadata:
 spec:
   type: ClusterIP
   ports:
-  - name: http
-    port: 6333
-    targetPort: 6333
-  - name: grpc
-    port: 6334
-    targetPort: 6334
+    - name: http
+      port: 6333
+      targetPort: 6333
+    - name: grpc
+      port: 6334
+      targetPort: 6334
   selector:
     app: qdrant

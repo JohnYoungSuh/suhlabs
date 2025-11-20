@@ -74,7 +74,7 @@ echo -e "${YELLOW}Initializing HSM token: $SOFTHSM_TOKEN_LABEL${NC}"
 # Check if token already exists
 if softhsm2-util --show-slots | grep -q "$SOFTHSM_TOKEN_LABEL"; then
     echo -e "${YELLOW}Token already exists. Deleting...${NC}"
-    SLOT_ID=$(softhsm2-util --show-slots | grep "Slot " | head -1 | awk '{print $2}')
+    # SLOT_ID=$(softhsm2-util --show-slots | grep "Slot " | head -1 | awk '{print $2}')
     softhsm2-util --delete-token --token "$SOFTHSM_TOKEN_LABEL" || true
 fi
 

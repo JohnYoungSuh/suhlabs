@@ -101,31 +101,31 @@ spec:
         spec:
           restartPolicy: OnFailure
           containers:
-          - name: indexer
-            image: ghcr.io/johnyoungsuh/ai-ops-agent:2.0.0
-            command:
-            - python3
-            - /scripts/index.py
-            env:
-            - name: OLLAMA_HOST
-              value: "http://ollama:11434"
-            - name: QDRANT_HOST
-              value: "http://qdrant:6333"
-            volumeMounts:
-            - name: workspace
-              mountPath: /workspace
-              readOnly: true
-            - name: indexer-script
-              mountPath: /scripts
+            - name: indexer
+              image: ghcr.io/johnyoungsuh/ai-ops-agent:2.0.0
+              command:
+                - python3
+                - /scripts/index.py
+              env:
+                - name: OLLAMA_HOST
+                  value: "http://ollama:11434"
+                - name: QDRANT_HOST
+                  value: "http://qdrant:6333"
+              volumeMounts:
+                - name: workspace
+                  mountPath: /workspace
+                  readOnly: true
+                - name: indexer-script
+                  mountPath: /scripts
           volumes:
-          - name: workspace
-            # Mount the suhlabs repository (read-only)
-            # Option 1: Use a PVC with the repo
-            persistentVolumeClaim:
-              claimName: suhlabs-workspace
-            # Option 2: Use git-sync sidecar (recommended)
-            # emptyDir: {}
-          - name: indexer-script
-            configMap:
-              name: rag-indexer-script
-              defaultMode: 0755
+            - name: workspace
+              # Mount the suhlabs repository (read-only)
+              # Option 1: Use a PVC with the repo
+              persistentVolumeClaim:
+                claimName: suhlabs-workspace
+              # Option 2: Use git-sync sidecar (recommended)
+              # emptyDir: {}
+            - name: indexer-script
+              configMap:
+                name: rag-indexer-script
+                defaultMode: 0755

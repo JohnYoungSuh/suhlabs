@@ -34,7 +34,7 @@ jobs:
         uses: trufflesecurity/trufflehog@main
         with:
           path: ./
-          extra_args: --debug --only-verified
+          extra_args: --debug --only-verified --config=.trufflehog.yaml
 
       - name: GitLeaks Secret Scan
         uses: gitleaks/gitleaks-action@v2

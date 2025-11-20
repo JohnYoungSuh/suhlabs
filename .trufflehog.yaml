@@ -1,0 +1,28 @@
+# TruffleHog configuration for SuhLabs
+# https://github.com/trufflesecurity/trufflehog
+
+# Exclude documentation and template files
+exclude:
+  paths:
+    - '*.md'
+    - '*.template'
+    - '*.example'
+    - 'docs/**'
+    - 'venv/**'
+    - '.venv/**'
+    - 'node_modules/**'
+    - '*.lock'
+    - 'package-lock.json'
+
+# Only report verified secrets (reduces false positives)
+only-verified: true
+
+# Skip common development credentials that are not real secrets
+allow:
+  # Common development/example credentials
+  - 'minioadmin'  # Default MinIO credentials in documentation
+  - 'root'  # Dev mode Vault token in documentation
+  - 'changeme'
+  - 'your-token'
+  - 'your-password'
+  - 'example.com'

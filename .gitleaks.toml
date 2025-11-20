@@ -25,6 +25,12 @@ regexes = [
     '''change-me''',
     '''your-password''',
     '''your-token''',
+    '''your-root-token''',
+    '''minioadmin''',  # Default MinIO dev credentials in documentation
+    '''VAULT_DEV_ROOT_TOKEN_ID''',  # Dev environment variable examples
+    '''token:\s+root''',  # Vault dev mode token in documentation
+    '''export\s+VAULT_TOKEN=root''',  # Example commands in docs
+    '''export\s+MINIO_.*=minioadmin''',  # MinIO example credentials in docs
 ]
 
 # Custom rules

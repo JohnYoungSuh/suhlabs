@@ -196,8 +196,44 @@ jobs:
             cat vault-keys.txt || true
           fi
 
+      - name: Unseal Vault
+        run: |
+          export VAULT_ADDR=http://localhost:8200
+
+          # Restart port-forward if needed
+          kubectl port-forward -n vault svc/vault 8200:8200 &
+          sleep 5
+
+          # Extract unseal keys and unseal Vault
+          if [ -f vault-keys.txt ]; then
+            echo "Unsealing Vault with all available keys..."
+
+            # Extract and apply each unseal key
+            # Since we initialized with -key-shares=1 -key-threshold=1, only one key is needed
+            # But we'll handle multiple keys in case the configuration changes
+            for i in 1 2 3 4 5; do
+              UNSEAL_KEY=$(grep "Unseal Key $i:" vault-keys.txt 2>/dev/null | awk '{print $NF}')
+              if [ -n "$UNSEAL_KEY" ]; then
+                echo "Applying unseal key $i..."
+                vault operator unseal "$UNSEAL_KEY" || true
+              fi
+            done
+
+            # Verify Vault is unsealed
+            echo ""
+            echo "Vault status after unsealing:"
+            vault status
+          else
+            echo "Warning: vault-keys.txt not found, Vault may already be unsealed"
+            vault status || true
+          fi
+
       - name: Deploy Vault PKI
         run: |
+          # Ensure port-forward is running
+          kubectl port-forward -n vault svc/vault 8200:8200 &
+          sleep 5
+
           cd cluster/foundation/vault-pki
           chmod +x init-vault-pki.sh verify-pki.sh
 
@@ -214,6 +250,10 @@ jobs:
 
       - name: Verify PKI
         run: |
+          # Ensure port-forward is running
+          kubectl port-forward -n vault svc/vault 8200:8200 &
+          sleep 5
+
           cd cluster/foundation/vault-pki
           if [ -f /home/runner/work/suhlabs/suhlabs/vault-keys.txt ]; then
             export VAULT_TOKEN=$(grep 'Initial Root Token:' /home/runner/work/suhlabs/suhlabs/vault-keys.txt | awk '{print $NF}')
@@ -246,6 +286,10 @@ jobs:
 
       - name: Run comprehensive verification
         run: |
+          # Ensure port-forward is running
+          kubectl port-forward -n vault svc/vault 8200:8200 &
+          sleep 5
+
           cd cluster/foundation
           chmod +x verify-all.sh
 

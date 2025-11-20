@@ -1,0 +1,202 @@
+# PhotoPrism - AI-Powered Photo Management
+# TEMPLATE FILE - Do not commit secrets!
+# Use scripts/deploy-with-vault.sh to deploy with actual secrets
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: photoprism-config
+  namespace: photoprism
+data:
+  PHOTOPRISM_DEBUG: "false"
+  PHOTOPRISM_PUBLIC: "false"  # Private, authentication required
+  PHOTOPRISM_READONLY: "false"
+  PHOTOPRISM_EXPERIMENTAL: "false"
+  PHOTOPRISM_DISABLE_CHOWN: "false"
+  PHOTOPRISM_DISABLE_WEBDAV: "false"
+  PHOTOPRISM_DISABLE_SETTINGS: "false"
+  PHOTOPRISM_DISABLE_TENSORFLOW: "false"  # Enable AI features
+  PHOTOPRISM_DISABLE_FACES: "false"  # Enable face detection
+  PHOTOPRISM_DISABLE_CLASSIFICATION: "false"  # Enable object recognition
+  PHOTOPRISM_DISABLE_RAW: "false"
+
+  # Site configuration
+  PHOTOPRISM_SITE_URL: "https://photos.familyname.family"
+  PHOTOPRISM_SITE_TITLE: "Family Photos"
+  PHOTOPRISM_SITE_CAPTION: "Our Family Memories"
+  PHOTOPRISM_SITE_DESCRIPTION: "Private family photo collection"
+  PHOTOPRISM_SITE_AUTHOR: "Family"
+
+  # Database
+  PHOTOPRISM_DATABASE_DRIVER: "mysql"
+  PHOTOPRISM_DATABASE_SERVER: "mariadb:3306"
+  PHOTOPRISM_DATABASE_NAME: "photoprism"
+  PHOTOPRISM_DATABASE_USER: "photoprism"
+
+  # Storage (MinIO S3)
+  PHOTOPRISM_ORIGINALS_LIMIT: "10000"  # Max file size (MB)
+  PHOTOPRISM_HTTP_COMPRESSION: "gzip"
+
+  # Feature flags
+  PHOTOPRISM_UPLOAD_NSFW: "false"
+  PHOTOPRISM_DETECT_NSFW: "true"
+
+  # Workers (GPU acceleration)
+  PHOTOPRISM_WORKERS: "4"
+
+  # Thumbnail quality
+  PHOTOPRISM_THUMB_FILTER: "lanczos"
+  PHOTOPRISM_THUMB_UNCACHED: "false"
+  PHOTOPRISM_THUMB_SIZE: "2048"
+  PHOTOPRISM_THUMB_SIZE_UNCACHED: "7680"
+
+  # JPEG quality
+  PHOTOPRISM_JPEG_QUALITY: "85"
+  PHOTOPRISM_JPEG_SIZE: "7680"
+
+  # Log level
+  PHOTOPRISM_LOG_LEVEL: "info"
+  PHOTOPRISM_INIT: "https"
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: photoprism-secrets
+  namespace: photoprism
+type: Opaque
+stringData:
+  # Secrets injected from Vault at deployment time
+  # Vault path: secret/photoprism/app
+  PHOTOPRISM_ADMIN_PASSWORD: "${VAULT_PHOTOPRISM_ADMIN_PASSWORD}"
+  PHOTOPRISM_DATABASE_PASSWORD: "${VAULT_PHOTOPRISM_DATABASE_PASSWORD}"
+  PHOTOPRISM_S3_ENDPOINT: "minio:9000"
+  PHOTOPRISM_S3_BUCKET: "photoprism"
+  PHOTOPRISM_S3_ACCESS_KEY: "${VAULT_PHOTOPRISM_S3_ACCESS_KEY}"
+  PHOTOPRISM_S3_SECRET_KEY: "${VAULT_PHOTOPRISM_S3_SECRET_KEY}"
+  PHOTOPRISM_S3_REGION: "us-east-1"
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: photoprism
+  namespace: photoprism
+  labels:
+    app: photoprism
+    component: app
+spec:
+  replicas: 2  # For HA
+  selector:
+    matchLabels:
+      app: photoprism
+  template:
+    metadata:
+      labels:
+        app: photoprism
+        component: app
+    spec:
+      # Security context
+      securityContext:
+        fsGroup: 1000
+        runAsUser: 1000
+        runAsNonRoot: true
+
+      # Init container - wait for database
+      initContainers:
+      - name: wait-for-db
+        image: busybox:1.36
+        command:
+        - sh
+        - -c
+        - |
+          until nc -z mariadb 3306; do
+            echo "Waiting for MariaDB..."
+            sleep 5
+          done
+          echo "MariaDB is ready!"
+
+      - name: wait-for-minio
+        image: busybox:1.36
+        command:
+        - sh
+        - -c
+        - |
+          until nc -z minio 9000; do
+            echo "Waiting for MinIO..."
+            sleep 5
+          done
+          echo "MinIO is ready!"
+
+      containers:
+      - name: photoprism
+        image: photoprism/photoprism:latest
+        ports:
+        - name: http
+          containerPort: 2342
+        envFrom:
+        - configMapRef:
+            name: photoprism-config
+        - secretRef:
+            name: photoprism-secrets
+        volumeMounts:
+        - name: cache
+          mountPath: /photoprism/storage
+        - name: import
+          mountPath: /photoprism/import
+        resources:
+          requests:
+            cpu: 1000m
+            memory: 4Gi
+          limits:
+            cpu: 4000m
+            memory: 16Gi
+            # GPU support (optional - enable if GPU available)
+            # nvidia.com/gpu: "1"
+        livenessProbe:
+          httpGet:
+            path: /api/v1/status
+            port: 2342
+          initialDelaySeconds: 120
+          periodSeconds: 30
+          timeoutSeconds: 10
+        readinessProbe:
+          httpGet:
+            path: /api/v1/status
+            port: 2342
+          initialDelaySeconds: 60
+          periodSeconds: 10
+          timeoutSeconds: 5
+
+      volumes:
+      - name: cache
+        persistentVolumeClaim:
+          claimName: photoprism-cache
+      - name: import
+        emptyDir: {}
+
+      # Node affinity for GPU nodes (optional)
+      # affinity:
+      #   nodeAffinity:
+      #     preferredDuringSchedulingIgnoredDuringExecution:
+      #     - weight: 100
+      #       preference:
+      #         matchExpressions:
+      #         - key: gpu
+      #           operator: In
+      #           values:
+      #           - "true"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: photoprism
+  namespace: photoprism
+  labels:
+    app: photoprism
+spec:
+  type: ClusterIP
+  ports:
+  - name: http
+    port: 80
+    targetPort: 2342
+  selector:
+    app: photoprism

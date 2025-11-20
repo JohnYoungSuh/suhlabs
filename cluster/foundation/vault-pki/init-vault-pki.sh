@@ -32,7 +32,7 @@ NC='\033[0m' # No Color
 VAULT_ADDR="${VAULT_ADDR:-http://localhost:8200}"
 ROOT_CA_NAME="corp.local Root CA"
 INTERMEDIATE_CA_NAME="kubernetes.corp.local Intermediate CA"
-DOMAIN="corp.local"
+# DOMAIN="corp.local"  # Reserved for future use
 
 echo -e "${GREEN}========================================${NC}"
 echo -e "${GREEN}Vault PKI Initialization${NC}"

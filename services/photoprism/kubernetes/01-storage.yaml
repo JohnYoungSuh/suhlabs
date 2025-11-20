@@ -1,0 +1,43 @@
+# Storage for PhotoPrism
+---
+# MariaDB Storage
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: mariadb-data
+  namespace: photoprism
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 50Gi
+  storageClassName: longhorn  # Using Longhorn from K3s
+---
+# MinIO Storage for Photos (3TB)
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: minio-photos
+  namespace: photoprism
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 3Ti
+  storageClassName: longhorn
+---
+# PhotoPrism Cache
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: photoprism-cache
+  namespace: photoprism
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 100Gi  # For thumbnails and sidecars
+  storageClassName: longhorn

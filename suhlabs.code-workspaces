@@ -1,0 +1,189 @@
+{
+
+  "folders": [
+
+    {
+
+      "path": ".",
+
+      "name": "suhlabs"
+
+    },
+
+    {
+
+      "path": "ansible",
+
+      "name": "ansible"
+
+    },
+
+    {
+
+      "path": "bootstrap",
+
+      "name": "bootstrap"
+
+    },
+
+    {
+
+      "path": "cluster",
+
+      "name": "cluster"
+
+    },
+
+    {
+
+      "path": "docs",
+
+      "name": "docs"
+
+    },
+
+    {
+
+      "path": "infra",
+
+      "name": "infra"
+
+    },
+
+    {
+
+      "path": "services",
+
+      "name": "services"
+
+    }
+
+  ],
+
+  "settings": {
+
+    "files.exclude": {
+
+      "**/.git": true,
+
+      "**/__pycache__": true,
+
+      "**/*.pyc": true,
+
+      "**/node_modules": true,
+
+      "**/.DS_Store": true,
+
+      "**/venv": true,
+
+      "**/*.tar.gz": true
+
+    },
+
+    "editor.formatOnSave": true,
+
+    "editor.tabSize": 2,
+
+    "editor.insertSpaces": true,
+
+    "editor.rulers": [80, 120],
+
+    "files.trimTrailingWhitespace": true,
+
+    "files.insertFinalNewline": true,
+
+    "[python]": {
+
+      "editor.tabSize": 4
+
+    },
+
+    "[yaml]": {
+
+      "editor.tabSize": 2
+
+    },
+
+    "[markdown]": {
+
+      "editor.wordWrap": "on",
+
+      "files.trimTrailingWhitespace": false
+
+    }
+
+  },
+
+  "extensions": {
+
+    "recommendations": [
+
+      "ms-python.python",
+
+      "ms-python.vscode-pylance",
+
+      "redhat.vscode-yaml",
+
+      "ms-kubernetes-tools.vscode-kubernetes-tools",
+
+      "ms-azuretools.vscode-docker",
+
+      "redhat.ansible",
+
+      "hashicorp.terraform",
+
+      "esbenp.prettier-vscode",
+
+      "davidanson.vscode-markdownlint"
+
+    ]
+
+  },
+
+  "launch": {
+
+    "version": "0.2.0",
+
+    "configurations": []
+
+  },
+
+  "tasks": {
+
+    "version": "2.0.0",
+
+    "tasks": [
+
+      {
+
+        "label": "Make: Setup Workspace",
+
+        "type": "shell",
+
+        "command": "make setup",
+
+        "group": "build",
+
+        "problemMatcher": []
+
+      },
+
+      {
+
+        "label": "Make: Test",
+
+        "type": "shell",
+
+        "command": "make test",
+
+        "group": "test",
+
+        "problemMatcher": []
+
+      }
+
+    ]
+
+  }
+
+}

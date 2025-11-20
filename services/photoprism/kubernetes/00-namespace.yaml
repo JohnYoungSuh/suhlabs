@@ -1,0 +1,11 @@
+# PhotoPrism Namespace
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: photoprism
+  labels:
+    name: photoprism
+    app.kubernetes.io/name: photoprism
+    app.kubernetes.io/component: photo-management
+    managed-by: terraform

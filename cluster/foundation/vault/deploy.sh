@@ -10,7 +10,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 NAMESPACE="vault"
 RELEASE_NAME="vault"
 CHART_REPO="hashicorp/vault"
-CHART_VERSION=""  # Use latest by default
+# CHART_VERSION=""  # Use latest by default (reserved for version pinning)
 
 # Colors for output
 RED='\033[0;31m'

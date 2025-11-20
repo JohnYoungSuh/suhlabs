@@ -1,0 +1,128 @@
+# AI Ops/Sec Agent Deployment
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: ai-ops-agent-config
+  namespace: ai-ops
+data:
+  ENVIRONMENT: "development"
+  OLLAMA_HOST: "http://ollama:11434"
+  QDRANT_HOST: "http://qdrant:6333"
+  VAULT_ADDR: "http://vault.vault.svc.cluster.local:8200"
+  ML_LOG_DIR: "/var/log/ai-ops"
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: ai-ops-logs
+  namespace: ai-ops
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 5Gi
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ai-ops-agent
+  namespace: ai-ops
+  labels:
+    app: ai-ops-agent
+    component: api
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: ai-ops-agent
+  template:
+    metadata:
+      labels:
+        app: ai-ops-agent
+        component: api
+    spec:
+      serviceAccountName: ai-ops-agent
+      containers:
+        - name: agent
+          image: ghcr.io/johnyoungsuh/ai-ops-agent:2.0.0
+          ports:
+            - name: http
+              containerPort: 8000
+          envFrom:
+            - configMapRef:
+                name: ai-ops-agent-config
+          resources:
+            requests:
+              cpu: 500m
+              memory: 1Gi
+            limits:
+              cpu: 2000m
+              memory: 4Gi
+          volumeMounts:
+            - name: logs
+              mountPath: /var/log/ai-ops
+            - name: config
+              mountPath: /app/config
+              readOnly: true
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8000
+            initialDelaySeconds: 30
+            periodSeconds: 10
+          readinessProbe:
+            httpGet:
+              path: /ready
+              port: 8000
+            initialDelaySeconds: 5
+            periodSeconds: 5
+      volumes:
+        - name: logs
+          persistentVolumeClaim:
+            claimName: ai-ops-logs
+        - name: config
+          configMap:
+            name: ai-ops-agent-config
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: ai-ops-agent
+  namespace: ai-ops
+  labels:
+    app: ai-ops-agent
+spec:
+  type: ClusterIP
+  ports:
+    - name: http
+      port: 80
+      targetPort: 8000
+  selector:
+    app: ai-ops-agent
+---
+# Optional: Ingress for external access
+# apiVersion: networking.k8s.io/v1
+# kind: Ingress
+# metadata:
+#   name: ai-ops-agent
+#   namespace: ai-ops
+#   annotations:
+#     cert-manager.io/cluster-issuer: "vault-issuer"
+# spec:
+#   tls:
+#   - hosts:
+#     - ai-ops.suhlabs.io
+#     secretName: ai-ops-tls
+#   rules:
+#   - host: ai-ops.suhlabs.io
+#     http:
+#       paths:
+#       - path: /
+#         pathType: Prefix
+#         backend:
+#           service:
+#             name: ai-ops-agent
+#             port:
+#               number: 80

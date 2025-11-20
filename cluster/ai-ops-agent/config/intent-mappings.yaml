@@ -1,0 +1,265 @@
+# Intent Mappings: Natural Language → Infrastructure Actions
+#
+# Structure:
+#   <category>:
+#     <action>:
+#       <resource_type>:
+#         playbook: Path to Ansible playbook
+#         terraform_module: Path to Terraform module (optional)
+#         default_vars: Default variable values
+#         requires_approval: true|false
+#         estimated_duration: Human-readable duration
+#         rollback_plan: Rollback procedure (optional)
+
+provision:
+  create:
+    email:
+      playbook: "ansible/playbooks/provision-email.yml"
+      default_vars:
+        quota: "10GB"
+        backup_enabled: true
+        spam_filter_enabled: true
+      requires_approval: true
+      estimated_duration: "5 minutes"
+      rollback_plan: "Delete mailbox and DNS records"
+
+    website:
+      terraform_module: "infra/modules/static-website"
+      playbook: "ansible/playbooks/deploy-website.yml"
+      default_vars:
+        tls_enabled: true
+        cdn_enabled: false
+        auto_deploy: true
+        tags:
+          managed_by: "ai-ops-agent"
+          project: "suhlabs"
+      requires_approval: true
+      estimated_duration: "10 minutes"
+      rollback_plan: "Terraform destroy + DNS cleanup"
+
+    cluster:
+      terraform_module: "infra/modules/k8s-cluster"
+      default_vars:
+        node_count: 3
+        instance_type: "t3.medium"
+        k8s_version: "1.28"
+        tags:
+          managed_by: "ai-ops-agent"
+          project: "suhlabs"
+      requires_approval: true
+      estimated_duration: "20 minutes"
+      rollback_plan: "Terraform destroy (data loss warning)"
+
+    database:
+      terraform_module: "infra/modules/database"
+      playbook: "ansible/playbooks/init-database.yml"
+      default_vars:
+        engine: "postgresql"
+        version: "16"
+        instance_class: "db.t3.micro"
+        backup_retention: 7
+        multi_az: false
+        tags:
+          managed_by: "ai-ops-agent"
+          project: "suhlabs"
+      requires_approval: true
+      estimated_duration: "15 minutes"
+      rollback_plan: "Terraform destroy (BACKUP REQUIRED)"
+
+    namespace:
+      terraform_module: "infra/modules/k8s-namespace"
+      default_vars:
+        create_default_deny_policy: true
+        resource_quota:
+          requests.cpu: "1000m"
+          requests.memory: "2Gi"
+          limits.cpu: "4000m"
+          limits.memory: "8Gi"
+        tags:
+          managed_by: "ai-ops-agent"
+      requires_approval: false
+      estimated_duration: "1 minute"
+
+    photoprism:
+      playbook: "services/photoprism/deploy.sh"
+      default_vars:
+        storage_size: "1Ti"
+        mariadb_storage: "50Gi"
+        cache_storage: "100Gi"
+        enable_gpu: true
+        enable_authelia: true
+        domain: "photos.$family_name.family"  # Templated per family
+        family_name: null  # REQUIRED: Set during onboarding
+        preferred_name: null  # Optional: Customer-facing name
+        tags:
+          managed_by: "ai-ops-agent"
+          service: "photoprism"
+          project: "suhlabs"
+          family: "$family_name"
+      requires_approval: true
+      estimated_duration: "15 minutes"
+      rollback_plan: "kubectl delete namespace photoprism-$family_name"
+
+  onboard:
+    photoprism:
+      # Conversational onboarding flow via AI Ops bot
+      api_endpoint: "/api/v1/photoprism/onboard"
+      default_vars:
+        tld: "family"
+        enable_gpu: true
+        enable_authelia: true
+        storage_size: "1Ti"
+        mariadb_storage: "50Gi"
+        cache_storage: "100Gi"
+        # Collected during onboarding:
+        family_name: null  # REQUIRED: IT ops identifier (lowercase, alphanumeric)
+        preferred_name: null  # OPTIONAL: Customer-facing display name
+        contact_email: null  # REQUIRED: Domain registration contact
+        admin_password: null  # AUTO-GENERATED: PhotoPrism admin password
+      requires_approval: false  # Auto-approved during onboarding flow
+      estimated_duration: "20 minutes"
+      rollback_plan: "Delete namespace, domain DNS records, notify family"
+
+  delete:
+    "*":
+      playbook: "ansible/playbooks/delete-resource.yml"
+      requires_approval: true
+      estimated_duration: "5 minutes"
+      rollback_plan: "Restore from backup (if available)"
+
+security:
+  rotate:
+    secrets:
+      playbook: "ansible/playbooks/rotate-vault-secrets.yml"
+      default_vars:
+        backup_old_secrets: true
+        notify_services: true
+      requires_approval: true
+      estimated_duration: "10 minutes"
+      rollback_plan: "Restore previous secret version from Vault"
+
+    credentials:
+      playbook: "ansible/playbooks/rotate-credentials.yml"
+      default_vars:
+        services_to_restart: []
+        grace_period_hours: 24
+      requires_approval: true
+      estimated_duration: "15 minutes"
+
+  issue:
+    cert:
+      playbook: "ansible/playbooks/issue-certificate.yml"
+      default_vars:
+        ttl: "30d"
+        auto_renew: true
+        cert_manager_issuer: "vault-issuer"
+      requires_approval: false
+      estimated_duration: "2 minutes"
+
+  enable:
+    mtls:
+      playbook: "ansible/playbooks/enable-mtls.yml"
+      default_vars:
+        service_mesh: "istio"
+        strict_mode: true
+      requires_approval: true
+      estimated_duration: "20 minutes"
+      rollback_plan: "Disable mTLS enforcement via playbook"
+
+identity:
+  create:
+    user:
+      playbook: "ansible/playbooks/create-user.yml"
+      terraform_module: "infra/modules/user-account"
+      default_vars:
+        mfa_enabled: true
+        default_role: "viewer"
+        send_welcome_email: true
+      requires_approval: true
+      estimated_duration: "5 minutes"
+      rollback_plan: "Delete user account"
+
+    serviceaccount:
+      playbook: "ansible/playbooks/create-serviceaccount.yml"
+      default_vars:
+        namespace: "default"
+        automount_token: true
+      requires_approval: false
+      estimated_duration: "1 minute"
+
+  grant:
+    access:
+      playbook: "ansible/playbooks/grant-access.yml"
+      default_vars:
+        permission_level: "read"
+        expiry_days: 90
+      requires_approval: true
+      estimated_duration: "2 minutes"
+      rollback_plan: "Revoke access via Vault policy"
+
+observability:
+  query:
+    logs:
+      # No playbook - API endpoint
+      api_endpoint: "/api/v1/logs/query"
+      requires_approval: false
+      estimated_duration: "< 1 minute"
+
+    metrics:
+      # No playbook - Prometheus query
+      api_endpoint: "/api/v1/metrics/query"
+      requires_approval: false
+      estimated_duration: "< 1 minute"
+
+  check:
+    photoprism_storage:
+      # Check PhotoPrism storage for a family
+      api_endpoint: "/api/v1/photoprism/storage"
+      default_vars:
+        family_name: null  # REQUIRED: Which family to check
+      requires_approval: false
+      estimated_duration: "< 1 minute"
+
+  list:
+    "*":
+      # Generic list operation
+      api_endpoint: "/api/v1/resources/list"
+      requires_approval: false
+      estimated_duration: "< 1 minute"
+
+compliance:
+  scan:
+    vulnerabilities:
+      playbook: "ansible/playbooks/scan-vulnerabilities.yml"
+      default_vars:
+        scanner: "trivy"
+        severity_threshold: "HIGH"
+        fail_on_critical: true
+      requires_approval: false
+      estimated_duration: "10 minutes"
+
+    sbom:
+      playbook: "ansible/playbooks/generate-sbom.yml"
+      default_vars:
+        format: "cyclonedx-json"
+        include_dependencies: true
+      requires_approval: false
+      estimated_duration: "5 minutes"
+
+  audit:
+    access:
+      playbook: "ansible/playbooks/audit-access.yml"
+      default_vars:
+        lookback_days: 30
+        include_service_accounts: true
+      requires_approval: false
+      estimated_duration: "5 minutes"
+
+# Wildcard/Default mappings
+query:
+  query:
+    "*":
+      # General information query - no action needed
+      api_endpoint: "/api/v1/rag/query"
+      requires_approval: false
+      estimated_duration: "< 1 minute"

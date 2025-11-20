@@ -1,0 +1,131 @@
+# RAG Indexer CronJob - Periodically index docs/configs into Qdrant
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: rag-indexer-script
+  namespace: ai-ops
+data:
+  index.py: |
+    #!/usr/bin/env python3
+    """
+    RAG Indexer Script - Index suhlabs documentation and configs
+    """
+    import asyncio
+    import os
+    import sys
+    from pathlib import Path
+
+    # Add parent directory to path
+    sys.path.insert(0, '/app')
+
+    from ai_ops_agent.rag.indexer import DocumentIndexer
+
+    OLLAMA_HOST = os.getenv("OLLAMA_HOST", "http://ollama:11434")
+    QDRANT_HOST = os.getenv("QDRANT_HOST", "http://qdrant:6333")
+    WORKSPACE = Path("/workspace")
+
+    async def main():
+        """Index all documentation and configs"""
+
+        indexer = DocumentIndexer(
+            ollama_host=OLLAMA_HOST,
+            qdrant_host=QDRANT_HOST
+        )
+
+        # Initialize collection
+        print("Initializing Qdrant collection...")
+        await indexer.initialize_collection()
+
+        # Index documentation
+        if (WORKSPACE / "docs").exists():
+            print("Indexing documentation...")
+            await indexer.index_directory(
+                WORKSPACE / "docs",
+                doc_type="doc",
+                pattern="**/*.md"
+            )
+
+        # Index Terraform configs
+        if (WORKSPACE / "infra").exists():
+            print("Indexing Terraform configs...")
+            await indexer.index_directory(
+                WORKSPACE / "infra",
+                doc_type="terraform",
+                pattern="**/*.tf"
+            )
+
+        # Index Ansible playbooks
+        if (WORKSPACE / "ansible").exists():
+            print("Indexing Ansible playbooks...")
+            await indexer.index_directory(
+                WORKSPACE / "ansible",
+                doc_type="ansible",
+                pattern="**/*.yml"
+            )
+
+        # Index Kubernetes manifests
+        if (WORKSPACE / "cluster").exists():
+            print("Indexing Kubernetes manifests...")
+            await indexer.index_directory(
+                WORKSPACE / "cluster",
+                doc_type="k8s",
+                pattern="**/*.yaml"
+            )
+
+        await indexer.close()
+        print("Indexing complete!")
+
+    if __name__ == "__main__":
+        asyncio.run(main())
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: rag-indexer
+  namespace: ai-ops
+  labels:
+    app: rag-indexer
+    component: indexer
+spec:
+  schedule: "0 */6 * * *"  # Every 6 hours
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      template:
+        metadata:
+          labels:
+            app: rag-indexer
+        spec:
+          restartPolicy: OnFailure
+          containers:
+            - name: indexer
+              image: ghcr.io/johnyoungsuh/ai-ops-agent:2.0.0
+              command:
+                - python3
+                - /scripts/index.py
+              env:
+                - name: OLLAMA_HOST
+                  value: "http://ollama:11434"
+                - name: QDRANT_HOST
+                  value: "http://qdrant:6333"
+              volumeMounts:
+                - name: workspace
+                  mountPath: /workspace
+                  readOnly: true
+                - name: indexer-script
+                  mountPath: /scripts
+          volumes:
+            - name: workspace
+              # Mount the suhlabs repository (read-only)
+              # Option 1: Use a PVC with the repo
+              persistentVolumeClaim:
+                claimName: suhlabs-workspace
+              # Option 2: Use git-sync sidecar (recommended)
+              # emptyDir: {}
+            - name: indexer-script
+              configMap:
+                name: rag-indexer-script
+                defaultMode: 0755

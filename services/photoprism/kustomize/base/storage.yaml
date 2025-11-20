@@ -1,0 +1,55 @@
+# Storage for PhotoPrism - Per Family Multi-Tenant
+---
+# MariaDB Storage
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: mariadb-data
+  namespace: photoprism-FAMILY_NAME
+  labels:
+    app: mariadb
+    family: FAMILY_NAME
+    component: database
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 50Gi  # Photo metadata, user data
+  storageClassName: longhorn  # Using Longhorn from K3s
+---
+# MinIO Storage for Photos (1TB per family)
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: minio-photos
+  namespace: photoprism-FAMILY_NAME
+  labels:
+    app: minio
+    family: FAMILY_NAME
+    component: storage
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 1Ti  # Original photos and videos
+  storageClassName: longhorn
+---
+# PhotoPrism Cache
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: photoprism-cache
+  namespace: photoprism-FAMILY_NAME
+  labels:
+    app: photoprism
+    family: FAMILY_NAME
+    component: cache
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 100Gi  # Thumbnails, sidecars, temp files
+  storageClassName: longhorn

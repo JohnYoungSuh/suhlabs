@@ -193,7 +193,8 @@ jobs:
           # Initialize Vault if not already initialized
           if ! vault status 2>/dev/null | grep -q "Initialized.*true"; then
             vault operator init -key-shares=1 -key-threshold=1 > vault-keys.txt || true
-            cat vault-keys.txt || true
+            echo "✓ Vault initialized (keys saved to vault-keys.txt)"
+            echo "Note: Keys are NOT printed to logs for security"
           fi
 
       - name: Unseal Vault
@@ -306,7 +307,6 @@ jobs:
         with:
           name: test-results
           path: |
-            vault-keys.txt
             cluster/foundation/**/*.log
           retention-days: 7
 

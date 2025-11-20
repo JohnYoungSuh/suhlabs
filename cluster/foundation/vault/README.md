@@ -144,25 +144,42 @@ Unseal Progress: 0/3
 
 ### Auto-Unseal for Dev Environments
 
-To avoid manual unsealing after every dev box restart, use the auto-unseal scripts:
+To avoid manual unsealing and token setup after every dev box restart:
 
 **One-time setup:**
 ```bash
-# After initializing Vault, save keys to Kubernetes secret
+# After initializing Vault, save keys and token to Kubernetes secret
 ./save-keys-to-k8s.sh .vault-keys.json
 ```
 
-**Auto-unseal after restarts:**
+**Quick start (recommended):**
 ```bash
-# Run this whenever your dev box restarts and Vault is sealed
+# Unseals Vault + sets VAULT_TOKEN + VAULT_ADDR in one command
+./vault-login.sh
+# Then export the variables shown in the output
+```
+
+**Alternative: Just unseal (no token):**
+```bash
+# Only unseals Vault, doesn't set environment variables
 ./auto-unseal.sh
 ```
 
+**Alternative: Just set environment (in existing shell):**
+```bash
+# Sets VAULT_TOKEN and VAULT_ADDR from Kubernetes secret
+source ./vault-env.sh
+
+# Now you can run vault commands
+vault status
+vault kv list secret/
+```
+
 **Benefits:**
-- ✅ Keys stored in Kubernetes (not in Git)
-- ✅ One command to unseal
-- ✅ No manual key entry
-- ✅ Secure - keys never leave your cluster
+- ✅ Keys and token stored in Kubernetes (not in Git)
+- ✅ One command to unseal + authenticate
+- ✅ No manual key or token entry
+- ✅ Secure - credentials never leave your cluster
 
 **Note:** Keep a backup of `.vault-keys.json` in a secure location (password manager, encrypted drive, etc.). The `.gitignore` already excludes these files from Git.
 

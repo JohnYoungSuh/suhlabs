@@ -45,46 +45,46 @@ spec:
     spec:
       serviceAccountName: ai-ops-agent
       containers:
-      - name: agent
-        image: ghcr.io/johnyoungsuh/ai-ops-agent:2.0.0
-        ports:
-        - name: http
-          containerPort: 8000
-        envFrom:
-        - configMapRef:
-            name: ai-ops-agent-config
-        resources:
-          requests:
-            cpu: 500m
-            memory: 1Gi
-          limits:
-            cpu: 2000m
-            memory: 4Gi
-        volumeMounts:
-        - name: logs
-          mountPath: /var/log/ai-ops
-        - name: config
-          mountPath: /app/config
-          readOnly: true
-        livenessProbe:
-          httpGet:
-            path: /health
-            port: 8000
-          initialDelaySeconds: 30
-          periodSeconds: 10
-        readinessProbe:
-          httpGet:
-            path: /ready
-            port: 8000
-          initialDelaySeconds: 5
-          periodSeconds: 5
+        - name: agent
+          image: ghcr.io/johnyoungsuh/ai-ops-agent:2.0.0
+          ports:
+            - name: http
+              containerPort: 8000
+          envFrom:
+            - configMapRef:
+                name: ai-ops-agent-config
+          resources:
+            requests:
+              cpu: 500m
+              memory: 1Gi
+            limits:
+              cpu: 2000m
+              memory: 4Gi
+          volumeMounts:
+            - name: logs
+              mountPath: /var/log/ai-ops
+            - name: config
+              mountPath: /app/config
+              readOnly: true
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8000
+            initialDelaySeconds: 30
+            periodSeconds: 10
+          readinessProbe:
+            httpGet:
+              path: /ready
+              port: 8000
+            initialDelaySeconds: 5
+            periodSeconds: 5
       volumes:
-      - name: logs
-        persistentVolumeClaim:
-          claimName: ai-ops-logs
-      - name: config
-        configMap:
-          name: ai-ops-agent-config
+        - name: logs
+          persistentVolumeClaim:
+            claimName: ai-ops-logs
+        - name: config
+          configMap:
+            name: ai-ops-agent-config
 ---
 apiVersion: v1
 kind: Service
@@ -96,9 +96,9 @@ metadata:
 spec:
   type: ClusterIP
   ports:
-  - name: http
-    port: 80
-    targetPort: 8000
+    - name: http
+      port: 80
+      targetPort: 8000
   selector:
     app: ai-ops-agent
 ---

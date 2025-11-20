@@ -183,6 +183,36 @@ vault kv list secret/
 
 **Note:** Keep a backup of `.vault-keys.json` in a secure location (password manager, encrypted drive, etc.). The `.gitignore` already excludes these files from Git.
 
+### Fully Automated Setup (Set It and Forget It)
+
+To automatically unseal Vault and set credentials on every machine restart:
+
+```bash
+# One-time setup
+./setup-auto-unseal.sh
+```
+
+This configures:
+1. **Systemd service** - Auto-unseals Vault on boot (~30s after startup)
+2. **Shell profile** - Auto-loads VAULT_TOKEN and VAULT_ADDR in every new terminal
+
+**After setup:**
+- ✅ Machine restarts → Vault auto-unseals
+- ✅ New terminal → Credentials auto-loaded
+- ✅ Zero manual steps
+
+**Manual controls:**
+```bash
+# Check service status
+systemctl --user status vault-auto-unseal
+
+# View logs
+journalctl --user -u vault-auto-unseal
+
+# Disable auto-unseal
+systemctl --user disable vault-auto-unseal
+```
+
 ## Bootstrap Script (vault-bootstrap.sh)
 
 The `vault-bootstrap.sh` script automates initialization, unsealing, and sealing operations with secure key management.

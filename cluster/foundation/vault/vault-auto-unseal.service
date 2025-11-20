@@ -1,0 +1,16 @@
+[Unit]
+Description=Auto-unseal Vault on startup
+After=network-online.target docker.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+# Wait a bit for Kubernetes to be ready
+ExecStartPre=/bin/sleep 30
+ExecStart=/bin/bash -c 'cd %h/projects/suhlabs/aiops-substrate/cluster/foundation/vault && ./vault-login.sh'
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=default.target

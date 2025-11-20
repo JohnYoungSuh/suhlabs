@@ -95,7 +95,22 @@ echo "Configuring Kubernetes auth..."
 
 # Extract Kubernetes CA cert and token from Vault pod
 echo "Extracting Kubernetes credentials from Vault pod..."
+
+# Wait for Vault pod to be ready
+echo "Waiting for Vault pod to be ready..."
+kubectl wait --for=condition=ready pod -l app=vault -n vault --timeout=120s || {
+    echo -e "${RED}✗ Vault pod not ready${NC}"
+    kubectl get pods -n vault
+    exit 1
+}
+
 VAULT_POD=$(kubectl get pod -n vault -l app=vault -o jsonpath='{.items[0].metadata.name}')
+if [ -z "$VAULT_POD" ]; then
+    echo -e "${RED}✗ No Vault pod found with label app=vault${NC}"
+    kubectl get pods -n vault --show-labels
+    exit 1
+fi
+echo "Found Vault pod: $VAULT_POD"
 
 # Get the service account token and CA cert from inside the Vault pod
 K8S_CA_CERT=$(kubectl exec -n vault $VAULT_POD -- cat /var/run/secrets/kubernetes.io/serviceaccount/ca.crt)

@@ -50,17 +50,17 @@ spec:
           volumeMounts:
             - name: models
               mountPath: /root/.ollama
-          # TODO: Add GPU support for better performance
-          # resources:
-          #   limits:
-          #     nvidia.com/gpu: 1
+            # TODO: Add GPU support for better performance
+            # resources:
+            #   limits:
+            #     nvidia.com/gpu: 1
       volumes:
         - name: models
           persistentVolumeClaim:
             claimName: ollama-models
-      # TODO: Add node selector for GPU nodes
-      # nodeSelector:
-      #   gpu: "true"
+        # TODO: Add node selector for GPU nodes
+        # nodeSelector:
+        #   gpu: "true"
 ---
 apiVersion: v1
 kind: Service

@@ -119,13 +119,13 @@ spec:
                   mountPath: /scripts
           volumes:
             - name: workspace
-            # Mount the suhlabs repository (read-only)
-            # Option 1: Use a PVC with the repo
-            persistentVolumeClaim:
-              claimName: suhlabs-workspace
-            # Option 2: Use git-sync sidecar (recommended)
-            # emptyDir: {}
-          - name: indexer-script
-            configMap:
-              name: rag-indexer-script
-              defaultMode: 0755
+              # Mount the suhlabs repository (read-only)
+              # Option 1: Use a PVC with the repo
+              persistentVolumeClaim:
+                claimName: suhlabs-workspace
+              # Option 2: Use git-sync sidecar (recommended)
+              # emptyDir: {}
+            - name: indexer-script
+              configMap:
+                name: rag-indexer-script
+                defaultMode: 0755

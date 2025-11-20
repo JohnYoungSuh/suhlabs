@@ -1,0 +1,199 @@
+# Starship Configuration for AIOps Substrate
+# Optimized for Kubernetes, Terraform, Ansible, and DevOps workflows
+
+format = """
+[](#9A348E)\
+$os\
+$username\
+[](bg:#DA627D fg:#9A348E)\
+$directory\
+[](fg:#DA627D bg:#FCA17D)\
+$git_branch\
+$git_status\
+[](fg:#FCA17D bg:#86BBD8)\
+$kubernetes\
+[](fg:#86BBD8 bg:#06969A)\
+$terraform\
+$helm\
+$docker_context\
+[](fg:#06969A bg:#33658A)\
+$python\
+$nodejs\
+$golang\
+[](fg:#33658A)\
+$line_break\
+$character"""
+
+[os]
+disabled = false
+style = "bg:#9A348E"
+
+[os.symbols]
+Windows = "󰍲 "
+Ubuntu = "󰕈 "
+SUSE = " "
+Raspbian = "󰐿 "
+Mint = "󰣭 "
+Macos = "󰀵 "
+Manjaro = " "
+Linux = "󰌽 "
+Gentoo = "󰣨 "
+Fedora = "󰣛 "
+Alpine = " "
+Amazon = " "
+Android = " "
+Arch = "󰣇 "
+Artix = "󰣇 "
+CentOS = " "
+Debian = "󰣚 "
+Redhat = "󱄛 "
+RedHatEnterprise = "󱄛 "
+
+[username]
+show_always = true
+style_user = "bg:#9A348E"
+style_root = "bg:#9A348E"
+format = '[$user ]($style)'
+disabled = false
+
+[directory]
+style = "bg:#DA627D"
+format = "[ $path ]($style)"
+truncation_length = 3
+truncation_symbol = "…/"
+
+[directory.substitutions]
+"Documents" = "󰈙 "
+"Downloads" = " "
+"Music" = " "
+"Pictures" = " "
+"/home/user/suhlabs" = "󱃾 "
+"cluster" = "☸ "
+"infra" = " "
+"terraform" = " "
+
+[git_branch]
+symbol = ""
+style = "bg:#FCA17D"
+format = '[ $symbol $branch ]($style)'
+
+[git_status]
+style = "bg:#FCA17D"
+format = '[$all_status$ahead_behind ]($style)'
+conflicted = "🏳"
+ahead = "⇡${count}"
+behind = "⇣${count}"
+diverged = "⇕⇡${ahead_count}⇣${behind_count}"
+up_to_date = "✓"
+untracked = "?${count}"
+stashed = "$${count}"
+modified = "!${count}"
+staged = "+${count}"
+renamed = "»${count}"
+deleted = "✘${count}"
+
+[kubernetes]
+format = '[ ☸ $context(\($namespace\)) ]($style)'
+style = "bg:#86BBD8"
+disabled = false
+detect_files = ['k8s', 'Dockerfile', 'kind-cluster.yaml']
+detect_folders = ['cluster', '.kube']
+
+[kubernetes.context_aliases]
+"aiops-dev" = "🏠 dev"
+"kind-aiops-dev" = "🏠 kind"
+"production" = "🚀 prod"
+
+[terraform]
+format = '[ $symbol $workspace ]($style)'
+symbol = "󱁢"
+style = "bg:#06969A"
+disabled = false
+detect_files = ['*.tf', '*.tfvars']
+detect_folders = ['infra', '.terraform']
+
+[helm]
+format = '[ $symbol $version ]($style)'
+symbol = "⎈"
+style = "bg:#06969A"
+disabled = false
+
+[docker_context]
+format = '[ $symbol $context ]($style)'
+symbol = "🐳"
+style = "bg:#06969A"
+disabled = false
+
+[python]
+symbol = ""
+style = "bg:#33658A"
+format = '[ $symbol $pyenv_prefix($version )(\($virtualenv\) )]($style)'
+pyenv_version_name = false
+detect_extensions = ['py']
+detect_files = ['requirements.txt', 'pyproject.toml', 'Pipfile']
+detect_folders = ['venv', '.venv']
+
+[nodejs]
+symbol = ""
+style = "bg:#33658A"
+format = '[ $symbol $version ]($style)'
+
+[golang]
+symbol = ""
+style = "bg:#33658A"
+format = '[ $symbol $version ]($style)'
+
+[rust]
+symbol = ""
+style = "bg:#33658A"
+format = '[ $symbol $version ]($style)'
+
+[time]
+disabled = false
+time_format = "%R" # Hour:Minute Format
+style = "bg:#33658A"
+format = '[  $time ]($style)'
+
+[line_break]
+disabled = false
+
+[character]
+success_symbol = '[➜](bold green)'
+error_symbol = '[➜](bold red)'
+
+# Additional useful modules for AIOps work
+
+[aws]
+format = '[ $symbol ($profile )(\($region\) )]($style)'
+symbol = "☁️"
+style = "bold yellow"
+disabled = false
+
+[vault]
+format = "[ $symbol $version ]($style)"
+symbol = "🔐"
+style = "bold blue"
+disabled = false
+
+[ansible]
+format = '[ $symbol $version ]($style)'
+symbol = "🅰️"
+style = "bold red"
+disabled = false
+
+[cmd_duration]
+min_time = 500
+format = "[ took $duration ]($style)"
+style = "bold yellow"
+
+[status]
+style = "bg:red"
+symbol = "🔴"
+format = '[\[$symbol $common_meaning$signal_name$maybe_int\]]($style) '
+map_symbol = true
+disabled = false
+
+[sudo]
+style = "bold green"
+symbol = "👩‍💻 "
+disabled = false

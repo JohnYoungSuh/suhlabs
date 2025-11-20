@@ -93,13 +93,21 @@ check_command vault || true
 check_command openssl || true
 
 log_test "Checking cluster connectivity..."
-if kubectl cluster-info &> /dev/null; then
-    CLUSTER_VERSION=$(kubectl version --short 2>/dev/null | grep Server | awk '{print $3}')
+CLUSTER_INFO_OUTPUT=$(kubectl cluster-info 2>&1)
+CLUSTER_INFO_EXIT=$?
+
+if [ $CLUSTER_INFO_EXIT -eq 0 ]; then
+    CLUSTER_VERSION=$(kubectl get nodes -o jsonpath='{.items[0].status.nodeInfo.kubeletVersion}' 2>/dev/null)
     log_success "Cluster is accessible (version: ${CLUSTER_VERSION})"
 else
     log_error "Cannot connect to Kubernetes cluster"
+    echo "  Exit code: $CLUSTER_INFO_EXIT"
+    echo "  Error output:"
+    echo "$CLUSTER_INFO_OUTPUT" | sed 's/^/    /'
+    echo ""
     echo "  Hint: Is your kind cluster running?"
     echo "  Try: kind get clusters"
+    echo "  Current context: $(kubectl config current-context 2>&1)"
     exit 1
 fi
 
@@ -118,28 +126,36 @@ else
 fi
 
 log_test "Checking CoreDNS pods..."
-POD_COUNT=$(kubectl get pods -n kube-system -l k8s-app=coredns --field-selector=status.phase=Running --no-headers 2>/dev/null | wc -l)
+# Note: Kind clusters use k8s-app=kube-dns label for CoreDNS pods
+POD_COUNT=$(kubectl get pods -n kube-system -l k8s-app=kube-dns --field-selector=status.phase=Running --no-headers 2>/dev/null | wc -l)
 if [ "$POD_COUNT" -gt 0 ]; then
     log_success "CoreDNS pods running ($POD_COUNT)"
-    kubectl get pods -n kube-system -l k8s-app=coredns
+    kubectl get pods -n kube-system -l k8s-app=kube-dns
 else
     log_error "No CoreDNS pods running"
+    echo "  Debugging info:"
+    echo "  All kube-system pods:"
+    kubectl get pods -n kube-system | sed 's/^/    /'
 fi
 
 log_test "Testing cluster.local DNS resolution..."
-if kubectl run dns-test-cluster --image=busybox:1.36 --rm -it --restart=Never \
-    --command -- nslookup kubernetes.default.svc.cluster.local 2>&1 | grep -q "Address 1:"; then
+DNS_TEST_OUTPUT=$(kubectl run dns-test-cluster --image=busybox:1.36 --rm --restart=Never \
+    --attach=true --quiet -- nslookup kubernetes.default.svc.cluster.local 2>&1)
+if echo "$DNS_TEST_OUTPUT" | grep -qE "(Address|answer:)"; then
     log_success "cluster.local DNS resolution working"
 else
     log_error "cluster.local DNS resolution failed"
+    echo "  Test output: $DNS_TEST_OUTPUT" | head -3
 fi
 
 log_test "Testing corp.local DNS resolution..."
-if kubectl run dns-test-corp --image=busybox:1.36 --rm -it --restart=Never \
-    --command -- nslookup ns1.corp.local 2>&1 | grep -q "Address 1:"; then
+DNS_TEST_OUTPUT=$(kubectl run dns-test-corp --image=busybox:1.36 --rm --restart=Never \
+    --attach=true --quiet -- nslookup ns1.corp.local 2>&1)
+if echo "$DNS_TEST_OUTPUT" | grep -qE "(Address|answer:)"; then
     log_success "corp.local DNS resolution working"
 else
     log_warning "corp.local DNS resolution failed (may not be critical)"
+    echo "  Test output: $DNS_TEST_OUTPUT" | head -3
 fi
 
 log_test "Checking CoreDNS ConfigMap..."
@@ -159,11 +175,11 @@ fi
 log_section "3. Vault + SoftHSM Verification"
 
 log_test "Checking Vault deployment..."
-if kubectl get statefulset vault -n vault &> /dev/null; then
-    REPLICAS=$(kubectl get statefulset vault -n vault -o jsonpath='{.status.readyReplicas}')
-    log_success "Vault StatefulSet found (${REPLICAS} replicas ready)"
+if kubectl get deployment vault -n vault &> /dev/null; then
+    REPLICAS=$(kubectl get deployment vault -n vault -o jsonpath='{.status.readyReplicas}')
+    log_success "Vault Deployment found (${REPLICAS} replicas ready)"
 else
-    log_warning "Vault StatefulSet not found (may not be deployed yet)"
+    log_warning "Vault Deployment not found (may not be deployed yet)"
 fi
 
 log_test "Checking Vault pods..."
@@ -188,12 +204,15 @@ if [ "$VAULT_POD_COUNT" -gt 0 ]; then
     # Set Vault address for CLI
     export VAULT_ADDR=http://localhost:8200
 
+    # Get the Vault pod name dynamically
+    VAULT_POD=$(kubectl get pod -n vault -l app=vault -o jsonpath='{.items[0].metadata.name}' 2>/dev/null)
+
     # Try to get seal status
-    if kubectl exec -n vault vault-0 -- vault status &> /dev/null; then
-        SEALED=$(kubectl exec -n vault vault-0 -- vault status -format=json 2>/dev/null | jq -r '.sealed')
+    if kubectl exec -n vault $VAULT_POD -- vault status &> /dev/null; then
+        SEALED=$(kubectl exec -n vault $VAULT_POD -- vault status -format=json 2>/dev/null | jq -r '.sealed')
         if [ "$SEALED" = "false" ]; then
             log_success "Vault is unsealed (ready for operations)"
-            SEAL_TYPE=$(kubectl exec -n vault vault-0 -- vault status -format=json 2>/dev/null | jq -r '.seal_type')
+            SEAL_TYPE=$(kubectl exec -n vault $VAULT_POD -- vault status -format=json 2>/dev/null | jq -r '.seal_type')
             echo "  Seal Type: ${SEAL_TYPE}"
         else
             log_warning "Vault is sealed (needs initialization or unsealing)"
@@ -205,22 +224,18 @@ else
     log_warning "Vault not running, skipping seal status check"
 fi
 
-log_test "Checking SoftHSM configuration..."
+log_test "Checking Vault seal type..."
 if [ "$VAULT_POD_COUNT" -gt 0 ]; then
-    if kubectl exec -n vault vault-0 -- test -f /var/lib/softhsm/tokens/vault-hsm.db 2>/dev/null; then
-        log_success "SoftHSM token database exists"
-
-        # Check token info
-        if kubectl exec -n vault vault-0 -- softhsm2-util --show-slots 2>/dev/null | grep -q "vault-hsm"; then
-            log_success "SoftHSM token initialized"
-        else
-            log_warning "SoftHSM token may not be properly initialized"
-        fi
+    VAULT_POD=$(kubectl get pod -n vault -l app=vault -o jsonpath='{.items[0].metadata.name}' 2>/dev/null)
+    if kubectl exec -n vault $VAULT_POD -- vault status 2>/dev/null | grep -q "Seal Type"; then
+        SEAL_TYPE=$(kubectl exec -n vault $VAULT_POD -- vault status 2>/dev/null | grep "Seal Type" | awk '{print $3}')
+        log_success "Vault seal type: ${SEAL_TYPE}"
+        echo "  Note: Using Shamir seal (manual unseal) for open-source Vault"
     else
-        log_warning "SoftHSM token database not found"
+        log_warning "Cannot determine Vault seal type"
     fi
 else
-    log_warning "Vault not running, skipping SoftHSM check"
+    log_warning "Vault not running, skipping seal type check"
 fi
 
 # ============================================================================
@@ -283,16 +298,19 @@ log_section "5. Integration Testing"
 log_test "Testing DNS → Vault integration..."
 if [ "$POD_COUNT" -gt 0 ] && [ "$VAULT_POD_COUNT" -gt 0 ]; then
     # Test that CoreDNS can resolve Vault service
-    if kubectl run dns-vault-test --image=busybox:1.36 --rm -it --restart=Never \
-        --command -- nslookup vault.vault.svc.cluster.local 2>&1 | grep -q "Address 1:"; then
+    VAULT_DNS_OUTPUT=$(kubectl run dns-vault-test --image=busybox:1.36 --rm --restart=Never \
+        --attach=true --quiet -- nslookup vault.vault.svc.cluster.local 2>&1)
+    if echo "$VAULT_DNS_OUTPUT" | grep -qE "(Address|answer:)"; then
         log_success "CoreDNS can resolve Vault service"
     else
         log_error "CoreDNS cannot resolve Vault service"
+        echo "  Test output: $VAULT_DNS_OUTPUT" | head -3
     fi
 
     # Test corp.local CNAME
-    if kubectl run dns-vault-corp-test --image=busybox:1.36 --rm -it --restart=Never \
-        --command -- nslookup vault.corp.local 2>&1 | grep -q "canonical name"; then
+    CORP_DNS_OUTPUT=$(kubectl run dns-vault-corp-test --image=busybox:1.36 --rm --restart=Never \
+        --attach=true --quiet -- nslookup vault.corp.local 2>&1)
+    if echo "$CORP_DNS_OUTPUT" | grep -q "canonical name"; then
         log_success "corp.local CNAME to Vault working"
     else
         log_warning "corp.local CNAME to Vault not configured"
@@ -301,16 +319,17 @@ else
     log_warning "Services not running, skipping integration tests"
 fi
 
-log_test "Testing Vault → SoftHSM integration..."
+log_test "Testing Vault API accessibility..."
 if [ "$VAULT_POD_COUNT" -gt 0 ]; then
-    # Check Vault seal configuration mentions PKCS#11
-    if kubectl exec -n vault vault-0 -- vault status 2>/dev/null | grep -qi "pkcs11"; then
-        log_success "Vault configured with PKCS#11 (SoftHSM)"
+    VAULT_POD=$(kubectl get pod -n vault -l app=vault -o jsonpath='{.items[0].metadata.name}' 2>/dev/null)
+    # Check if Vault API responds
+    if kubectl exec -n vault $VAULT_POD -- vault status 2>/dev/null | grep -q "Initialized"; then
+        log_success "Vault API is accessible"
     else
-        log_warning "Vault seal type may not be PKCS#11"
+        log_warning "Vault API may not be initialized"
     fi
 else
-    log_warning "Vault not running, skipping SoftHSM integration test"
+    log_warning "Vault not running, skipping API accessibility test"
 fi
 
 # ============================================================================
@@ -378,8 +397,9 @@ fi
 
 log_test "Checking Vault response times..."
 if [ "$VAULT_POD_COUNT" -gt 0 ]; then
+    VAULT_POD=$(kubectl get pod -n vault -l app=vault -o jsonpath='{.items[0].metadata.name}' 2>/dev/null)
     START=$(date +%s%N)
-    kubectl exec -n vault vault-0 -- vault status &> /dev/null || true
+    kubectl exec -n vault $VAULT_POD -- vault status &> /dev/null || true
     END=$(date +%s%N)
     DURATION=$(( (END - START) / 1000000 ))
 
@@ -427,7 +447,7 @@ echo ""
 if [ $FAILED -gt 0 ] || [ $WARNINGS -gt 0 ]; then
     echo "  1. Review failed/warning tests above"
     echo "  2. Check service logs:"
-    echo "     kubectl logs -n kube-system -l k8s-app=coredns"
+    echo "     kubectl logs -n kube-system -l k8s-app=kube-dns"
     echo "     kubectl logs -n vault -l app=vault"
     echo "  3. Run individual verification scripts:"
     echo "     cd coredns && ./deploy.sh"

@@ -19,16 +19,9 @@ metadata:
   namespace: vault
 data:
   vault.hcl: |
-    # Vault configuration with SoftHSM seal
-
-    seal "pkcs11" {
-      lib            = "/usr/lib/softhsm/libsofthsm2.so"
-      slot           = "0"
-      pin            = "1234"
-      key_label      = "vault-root-key"
-      hmac_key_label = "vault-hmac-key"
-      generate_key   = "true"
-    }
+    # Vault configuration for development
+    # Note: PKCS11 seal requires Vault Enterprise
+    # Using file storage with manual Shamir seal for open-source version
 
     storage "file" {
       path = "/vault/data"
@@ -51,12 +44,8 @@ data:
       disable_hostname = true
     }
 
-  softhsm2.conf: |
-    # SoftHSM v2 configuration
-    directories.tokendir = /vault/softhsm/tokens
-    objectstore.backend = file
-    log.level = INFO
-    slots.removable = false
+    # For development: disable mlock to avoid permission issues
+    disable_mlock = true
 
 ---
 apiVersion: v1
@@ -71,20 +60,6 @@ spec:
     requests:
       storage: 1Gi
   storageClassName: standard  # Adjust for your cluster
-
----
-apiVersion: v1
-kind: PersistentVolumeClaim
-metadata:
-  name: vault-softhsm
-  namespace: vault
-spec:
-  accessModes:
-    - ReadWriteOnce
-  resources:
-    requests:
-      storage: 100Mi
-  storageClassName: standard
 
 ---
 apiVersion: v1
@@ -116,57 +91,32 @@ spec:
         fsGroup: 1000
 
       initContainers:
-        # Initialize SoftHSM token
-        - name: init-softhsm
-          image: vault:1.15
+        # Initialize vault data directory
+        - name: init-vault
+          image: hashicorp/vault:1.15.4
           command:
             - /bin/sh
             - -c
             - |
               set -e
-              echo "Installing SoftHSM..."
-              apk add --no-cache softhsm
-
-              echo "Initializing SoftHSM token..."
-              export SOFTHSM2_CONF=/vault/config/softhsm2.conf
-
-              # Create token directory
-              mkdir -p /vault/softhsm/tokens
-
-              # Check if token exists
-              if ! softhsm2-util --show-slots | grep -q "vault-hsm"; then
-                echo "Creating new HSM token..."
-                softhsm2-util --init-token \
-                  --slot 0 \
-                  --label "vault-hsm" \
-                  --so-pin "5678" \
-                  --pin "1234"
-              else
-                echo "HSM token already exists"
-              fi
-
-              echo "SoftHSM initialization complete"
-              softhsm2-util --show-slots
+              echo "Initializing Vault data directory..."
+              mkdir -p /vault/data
+              chown -R 100:1000 /vault/data
+              echo "Vault data directory ready"
           volumeMounts:
-            - name: vault-config
-              mountPath: /vault/config
-            - name: vault-softhsm
-              mountPath: /vault/softhsm
+            - name: vault-data
+              mountPath: /vault/data
 
       containers:
         - name: vault
-          image: vault:1.15
+          image: hashicorp/vault:1.15.4
           imagePullPolicy: IfNotPresent
           command:
             - /bin/sh
             - -c
             - |
               set -e
-              echo "Installing SoftHSM runtime..."
-              apk add --no-cache softhsm
-
-              echo "Starting Vault..."
-              export SOFTHSM2_CONF=/vault/config/softhsm2.conf
+              echo "Starting Vault server..."
 
               # Start Vault
               vault server -config=/vault/config/vault.hcl
@@ -192,12 +142,10 @@ spec:
               mountPath: /vault/config
             - name: vault-data
               mountPath: /vault/data
-            - name: vault-softhsm
-              mountPath: /vault/softhsm
 
           livenessProbe:
             httpGet:
-              path: /v1/sys/health?standbyok=true
+              path: /v1/sys/health?standbyok=true&sealedcode=204&uninitcode=204
               port: 8200
               scheme: HTTP
             initialDelaySeconds: 60
@@ -229,12 +177,10 @@ spec:
             allowPrivilegeEscalation: false
             readOnlyRootFilesystem: false  # Vault needs to write to /tmp
             runAsNonRoot: true
-            runAsUser: 1000
+            runAsUser: 100  # Vault user
             capabilities:
               drop:
                 - ALL
-              add:
-                - IPC_LOCK  # Required for mlock
 
       volumes:
         - name: vault-config
@@ -243,9 +189,6 @@ spec:
         - name: vault-data
           persistentVolumeClaim:
             claimName: vault-data
-        - name: vault-softhsm
-          persistentVolumeClaim:
-            claimName: vault-softhsm
 
 ---
 apiVersion: v1

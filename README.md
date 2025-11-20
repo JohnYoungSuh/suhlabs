@@ -2,9 +2,10 @@
 
 Production-grade AI operations platform built with 100% open-source tools and zero cloud costs. A 14-day sprint implementing enterprise DevSecOps practices from first principles.
 
-[![Status](https://img.shields.io/badge/Status-Days%201--5%20Complete-brightgreen)]()
+[![Status](https://img.shields.io/badge/Status-Days%201--6%20Complete-brightgreen)]()
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE)
 [![Infrastructure as Code](https://img.shields.io/badge/IaC-Terraform%20%7C%20Ansible-purple)]()
+[![CI/CD](https://img.shields.io/badge/CI%2FCD-GitHub%20Actions-blue)]()
 
 ---
 
@@ -18,7 +19,7 @@ Building a self-hosted AI infrastructure platform with enterprise-grade security
 - **Self-hosted AI/LLM** - Own your data and infrastructure (Ollama, Qdrant)
 - **Zero licensing costs** - Built entirely with open-source tools
 
-## 📊 Current Status: Days 1-5 Complete ✅
+## 📊 Current Status: Days 1-6 Complete ✅
 
 ### ✅ Day 1-3: Foundation & IaC
 - Kubernetes cluster (Kind for local dev)
@@ -35,12 +36,20 @@ Building a self-hosted AI infrastructure platform with enterprise-grade security
   - Three PKI roles: ai-ops-agent, kubernetes, cert-manager
 - **Verification**: 33 automated tests
 
-### ✅ Day 5: Cert-Manager Integration (Just Completed!)
+### ✅ Day 5: Cert-Manager Integration
 - **Automated certificate issuance** from Vault PKI
 - **Three ClusterIssuers** for different security zones
 - **Certificate lifecycle management**: 30-day certs, auto-renew at 20 days
 - **Zero-touch operations**: No manual certificate management
 - **Comprehensive verification**: 9 test suites
+
+### ✅ Day 6: CI/CD Pipeline (Just Completed!)
+- **GitHub Actions CD pipeline**: Automated testing, building, and deployment
+- **Security scanning**: Trivy filesystem and image vulnerability scanning
+- **SBOM generation**: CycloneDX and SPDX formats for supply chain security
+- **Container publishing**: Automated push to GitHub Container Registry
+- **GitHub Security integration**: Vulnerability findings in Security tab
+- **Pipeline duration**: ~9 minutes (with cache), 7 parallel jobs
 
 ## 🏗️ Architecture
 
@@ -73,6 +82,13 @@ Building a self-hosted AI infrastructure platform with enterprise-grade security
 │         ↓                                                │
 │  ┌─────────────────────────────────────────────────┐   │
 │  │    Infrastructure as Code (Terraform/Ansible)   │   │
+│  └─────────────────────────────────────────────────┘   │
+│         ↓                                                │
+│  ┌─────────────────────────────────────────────────┐   │
+│  │    CI/CD Pipeline (GitHub Actions)              │   │
+│  │    • Security Scanning (Trivy)                  │   │
+│  │    • SBOM Generation (Syft)                     │   │
+│  │    • Automated Testing & Deployment             │   │
 │  └─────────────────────────────────────────────────┘   │
 └─────────────────────────────────────────────────────────┘
 ```
@@ -143,7 +159,9 @@ kubectl apply -f test-certificate.yaml
 ### Automation
 - **IaC**: Terraform for infrastructure provisioning
 - **Configuration Management**: Ansible for service deployment
-- **CI/CD**: GitHub Actions (coming)
+- **CI/CD**: GitHub Actions with automated testing and deployment
+- **Security Scanning**: Trivy for vulnerability detection
+- **SBOM**: Syft/Anchore for Software Bill of Materials
 - **Verification**: Bash scripts with comprehensive testing
 
 ### AI/ML (Coming)
@@ -178,14 +196,19 @@ suhlabs/
 │   └── ai-ops-agent/         # AI Ops Agent (coming)
 ├── docs/                       # Documentation
 │   ├── DAY-4-COMPLETE.md      # Day 4 completion summary
-│   ├── DAY-5-COMPLETE.md      # Day 5 completion summary ✨ NEW
+│   ├── DAY-5-COMPLETE.md      # Day 5 completion summary
+│   ├── DAY-6-COMPLETE.md      # Day 6 completion summary ✨ NEW
+│   ├── CI-CD-PIPELINE.md      # CI/CD pipeline guide ✨ NEW
 │   ├── lessons-learned.md     # Lessons and decisions
 │   └── 14-DAY-SPRINT.md      # Sprint plan
 ├── infra/                      # Terraform infrastructure
 │   ├── local/                 # Local development
 │   └── proxmox/              # Production deployment
+├── .github/workflows/          # CI/CD workflows ✨ NEW
+│   ├── ci.yml                 # Basic CI workflow
+│   └── cd.yml                 # Production CD pipeline ✨ NEW
 ├── Makefile                    # Common operations
-├── suhlabs.code-workspace     # VS Code workspace ✨ NEW
+├── suhlabs.code-workspace     # VS Code workspace
 └── README.md                   # This file
 ```
 
@@ -198,8 +221,8 @@ suhlabs/
 | 1-3 | Terminal Setup + K8s + IaC | ✅ | Kind cluster, Terraform, Ansible, workspace |
 | 4 | Foundation Services | ✅ | CoreDNS, SoftHSM, Vault PKI (2-tier CA) |
 | 5 | Cert-Manager | ✅ | Automated certificate lifecycle management |
-| 6 | CI/CD Pipeline | 🔄 Next | GitHub Actions, security scanning, SBOM |
-| 7 | Week 1 Integration | 📅 | Full stack deploy end-to-end |
+| 6 | CI/CD Pipeline | ✅ | GitHub Actions, security scanning, SBOM |
+| 7 | Week 1 Integration | 🔄 Next | Full stack deploy end-to-end |
 
 ### Week 2: Advanced Security + LLM Integration 📅
 
@@ -263,6 +286,9 @@ make kind-down && make kind-up
 - ✅ HSM integration for key protection
 - ✅ Vault for secret management
 - ✅ Separate PKI roles (least privilege)
+- ✅ Automated security scanning (Trivy)
+- ✅ SBOM generation for supply chain transparency
+- ✅ CI/CD pipeline with GitHub Actions
 - 🔄 mTLS between all services (coming Day 8)
 - 🔄 Network policies (zero-trust) (coming Day 8)
 - 🔄 Signed container images (coming Day 11)
@@ -273,8 +299,10 @@ Comprehensive documentation for each component:
 
 - **[Foundation Services](cluster/foundation/README.md)** - CoreDNS, SoftHSM, Vault PKI
 - **[Cert-Manager Guide](cluster/foundation/cert-manager/README.md)** - Certificate automation (400+ lines)
+- **[CI/CD Pipeline Guide](docs/CI-CD-PIPELINE.md)** - GitHub Actions, security scanning, SBOM (500+ lines)
 - **[Day 4 Complete](docs/DAY-4-COMPLETE.md)** - Foundation services summary
 - **[Day 5 Complete](docs/DAY-5-COMPLETE.md)** - Cert-manager integration summary
+- **[Day 6 Complete](docs/DAY-6-COMPLETE.md)** - CI/CD pipeline summary
 - **[Lessons Learned](docs/lessons-learned.md)** - Decisions and rationale (620+ lines)
 - **[14-Day Sprint Plan](docs/14-DAY-SPRINT.md)** - Complete roadmap
 - **[Ansible README](ansible/README.md)** - Automation guide (70+ sections)
@@ -358,20 +386,22 @@ This is a learning project and documentation contributions are welcome! Areas fo
 
 ## 📈 Stats
 
-- **Lines of Code**: ~6,000+ (infrastructure + documentation)
-- **Files Created**: 20+
-- **Automated Tests**: 37
-- **Documentation**: 2,500+ lines
-- **Time Investment**: ~12 hours (Days 4-5)
+- **Lines of Code**: ~7,500+ (infrastructure + documentation + CI/CD)
+- **Files Created**: 25+
+- **Automated Tests**: 40+ (37 infrastructure + 3 application)
+- **Documentation**: 3,500+ lines
+- **Time Investment**: ~18 hours (Days 4-6)
+- **CI/CD Pipeline**: ~9 minutes (cached)
 - **Cloud Cost**: $0 💰
 
 ## 🗺️ Roadmap
 
-### Short Term (Days 6-7)
-- [ ] GitHub Actions CI/CD pipeline
-- [ ] Security scanning (Trivy, Grype)
-- [ ] SBOM generation (Syft)
+### Short Term (Day 7)
+- [x] GitHub Actions CI/CD pipeline
+- [x] Security scanning (Trivy, Grype)
+- [x] SBOM generation (Syft)
 - [ ] Full stack integration testing
+- [ ] Week 1 demo and documentation
 
 ### Medium Term (Days 8-12)
 - [ ] mTLS between all services
@@ -413,4 +443,4 @@ Apache 2.0 - See [LICENSE](LICENSE) file for details.
 
 ---
 
-*Last updated: Day 5 complete - Automated certificate management with cert-manager ✨*
+*Last updated: Day 6 complete - Production CI/CD pipeline with security scanning and SBOM generation ✨*

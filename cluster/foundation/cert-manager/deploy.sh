@@ -59,9 +59,9 @@ echo -e "${GREEN}✓ cert-manager verification complete${NC}"
 echo -e "${YELLOW}Step 4: Configuring Vault for cert-manager...${NC}"
 
 # Check if Vault is accessible
-if ! kubectl get pod -n vault vault-0 &>/dev/null; then
+if ! kubectl get pod -n vault -l app=vault &>/dev/null; then
     echo -e "${RED}✗ Vault pod not found. Please deploy Vault first.${NC}"
-    echo "Run: cd cluster/foundation/vault-pki && ./init-vault-pki.sh"
+    echo "Run: cd cluster/foundation/softhsm && kubectl apply -f vault-deployment.yaml"
     exit 1
 fi
 
@@ -92,8 +92,20 @@ fi
 
 # Configure Kubernetes auth
 echo "Configuring Kubernetes auth..."
+
+# Extract Kubernetes CA cert and token from Vault pod
+echo "Extracting Kubernetes credentials from Vault pod..."
+VAULT_POD=$(kubectl get pod -n vault -l app=vault -o jsonpath='{.items[0].metadata.name}')
+
+# Get the service account token and CA cert from inside the Vault pod
+K8S_CA_CERT=$(kubectl exec -n vault $VAULT_POD -- cat /var/run/secrets/kubernetes.io/serviceaccount/ca.crt)
+K8S_TOKEN=$(kubectl exec -n vault $VAULT_POD -- cat /var/run/secrets/kubernetes.io/serviceaccount/token)
+
+# Configure Vault Kubernetes auth with proper credentials
 vault write auth/kubernetes/config \
-    kubernetes_host="https://kubernetes.default.svc:443"
+    kubernetes_host="https://kubernetes.default.svc:443" \
+    kubernetes_ca_cert="$K8S_CA_CERT" \
+    token_reviewer_jwt="$K8S_TOKEN"
 
 # Create cert-manager policy
 echo "Creating cert-manager policy..."

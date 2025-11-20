@@ -1,5 +1,63 @@
 # Lessons Learned - DevSecOps Sprint
 
+---
+
+## 🚨 CRITICAL: Pre-Implementation Checklist
+
+**MANDATORY STEP for ALL future development, configuration, and deployment:**
+
+### Before ANY Implementation:
+
+1. **Check GitHub Issues First**
+   ```bash
+   # For ANY technology you're about to use:
+   # 1. Go to the GitHub repository
+   # 2. Search issues for your use case
+   # 3. Filter by: is:issue <your-feature>
+   # 4. Read open AND closed issues
+
+   # Example:
+   https://github.com/hashicorp/vault/issues?q=is%3Aissue+pkcs11
+   https://github.com/openbao/openbao/issues
+   ```
+
+2. **Validate Against Known Issues**
+   - Search for your configuration keywords
+   - Check for "Enterprise only" limitations
+   - Look for CrashLoopBackOff, ImagePullBackOff patterns
+   - Read discussions about workarounds
+
+3. **Document Why You Chose This Approach**
+   - Link to issues you reviewed
+   - Note any known limitations
+   - Document alternatives you considered
+
+### Real Example from Day 5:
+
+**What we should have done:**
+```bash
+# BEFORE configuring Vault with PKCS11 seal:
+1. Search: https://github.com/hashicorp/vault/issues?q=pkcs11+seal
+2. Would have found: PKCS11 requires Enterprise
+3. Would have discovered: OpenBao has OSS PKCS11 support
+4. Result: Save 2+ hours of debugging
+```
+
+**What actually happened:**
+- ❌ Configured PKCS11 seal without checking issues
+- ❌ Hit error: "requires Vault Enterprise HSM binary"
+- ❌ Spent hours debugging permission errors, image issues, crash loops
+- ✅ Finally discovered via web search: OpenBao supports PKCS11 in OSS
+
+### Time Saved by Following This Process:
+- **Issue research**: 15 minutes
+- **Debugging wrong approach**: 2+ hours
+- **Net savings**: 105 minutes per component
+
+### DO NOT PROCEED without this checklist! ⚠️
+
+---
+
 ## Day 1: Kubernetes Deployment Issues
 
 ### Issue: ImagePullBackOff Error
@@ -82,7 +140,7 @@ kubectl describe pod <pod-name>
 docker pull nginx:latest
 docker pull ollama/ollama:latest
 docker pull postgres:15
-docker pull vault:1.15
+docker pull hashicorp/vault:1.15
 ```
 
 #### 2. Use Image Pull Secrets (Production)

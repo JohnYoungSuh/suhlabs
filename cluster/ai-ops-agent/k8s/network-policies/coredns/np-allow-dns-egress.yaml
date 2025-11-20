@@ -1,0 +1,20 @@
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: np-allow-dns-egress
+  namespace: <app-namespace>
+spec:
+  podSelector: {} # all pods in the app namespace can do DNS
+  policyTypes:
+    - Egress
+  egress:
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              k8s-app: coredns-namespace # label your CoreDNS namespace or change to match
+        - podSelector:
+            matchLabels:
+              app: coredns # change if CoreDNS pod label differs
+      ports:
+        - protocol: UDP
+          port: 53

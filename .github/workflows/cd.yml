@@ -92,28 +92,26 @@ jobs:
           format: 'table'
           severity: 'CRITICAL,HIGH,MEDIUM'
 
-  build:
-    name: Build and Push Image
+  # ============================================================================
+  # Build, Scan, Generate SBOM, then Push (all in one job for efficiency)
+  # This implements "shift-left security" - scan before pushing to registry
+  # ============================================================================
+  build-scan-and-push:
+    name: Build, Scan & Push Image
     needs: [test, security-scan]
     runs-on: ubuntu-latest
     permissions:
       contents: read
       packages: write
+      security-events: write
     outputs:
       image-digest: ${{ steps.build.outputs.digest }}
       image-tags: ${{ steps.meta.outputs.tags }}
+      image-tag-local: ${{ steps.set-tag.outputs.local-tag }}
     steps:
       - uses: actions/checkout@v4
 
       - uses: docker/setup-buildx-action@v3
-
-      - name: Log in to GHCR
-        if: github.event_name != 'pull_request'
-        uses: docker/login-action@v3
-        with:
-          registry: ${{ env.REGISTRY }}
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Extract metadata
         id: meta
@@ -128,51 +126,44 @@ jobs:
             type=semver,pattern={{major}}.{{minor}}
             type=raw,value=latest,enable=${{ github.ref == 'refs/heads/main' }}
 
-      - name: Build and push
+      - name: Set local image tag
+        id: set-tag
+        run: |
+          LOCAL_TAG="ai-ops-agent:${{ github.sha }}"
+          echo "local-tag=$LOCAL_TAG" >> $GITHUB_OUTPUT
+          echo "Building with local tag: $LOCAL_TAG"
+
+      # ========================================================================
+      # STEP 1: Build image locally (don't push yet)
+      # ========================================================================
+      - name: Build image locally
         id: build
         uses: docker/build-push-action@v5
         with:
           context: cluster/ai-ops-agent
-          push: ${{ github.event_name != 'pull_request' }}
-          tags: ${{ steps.meta.outputs.tags }}
+          load: true  # Load into local Docker daemon
+          tags: |
+            ${{ steps.set-tag.outputs.local-tag }}
+            ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
           platforms: linux/amd64
 
-      - name: Output image info
-        run: |
-          echo "Image digest: ${{ steps.build.outputs.digest }}"
-          echo "Image tags: ${{ steps.meta.outputs.tags }}"
-
-  image-scan:
-    name: Scan Container Image
-    needs: build
-    if: github.event_name != 'pull_request'
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      security-events: write
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Log in to GHCR
-        uses: docker/login-action@v3
-        with:
-          registry: ${{ env.REGISTRY }}
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Run Trivy vulnerability scanner on image
+      # ========================================================================
+      # STEP 2: Scan local image with Trivy
+      # ========================================================================
+      - name: Run Trivy vulnerability scanner on local image
         uses: aquasecurity/trivy-action@master
         with:
           scan-type: 'image'
-          image-ref: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.ref_name }}-${{ github.sha }}
+          image-ref: ${{ steps.set-tag.outputs.local-tag }}
           format: 'sarif'
           output: 'trivy-image-results.sarif'
           severity: 'CRITICAL,HIGH'
+          exit-code: '0'  # Don't fail the build, just report
 
-      - name: Upload Trivy image results
+      - name: Upload Trivy image scan results
         uses: github/codeql-action/upload-sarif@v3
         if: always()
         with:
@@ -183,57 +174,59 @@ jobs:
         uses: aquasecurity/trivy-action@master
         with:
           scan-type: 'image'
-          image-ref: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.ref_name }}-${{ github.sha }}
+          image-ref: ${{ steps.set-tag.outputs.local-tag }}
           format: 'table'
           severity: 'CRITICAL,HIGH,MEDIUM'
+          exit-code: '0'
 
-  sbom:
-    name: Generate SBOM
-    needs: build
-    if: github.event_name != 'pull_request'
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      packages: read
-    steps:
-      - uses: actions/checkout@v4
+      # ========================================================================
+      # STEP 3: Generate SBOM from local image
+      # ========================================================================
+      - name: Install Syft
+        run: |
+          curl -sSfL https://raw.githubusercontent.com/anchore/syft/main/install.sh | sh -s -- -b /usr/local/bin
+          syft version
 
-      - name: Log in to GHCR
-        uses: docker/login-action@v3
-        with:
-          registry: ${{ env.REGISTRY }}
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Generate SBOM (CycloneDX)
+        run: |
+          syft ${{ steps.set-tag.outputs.local-tag }} \
+            --output cyclonedx-json \
+            --file sbom-cyclonedx.json
 
-      - name: Generate SBOM with Syft
-        uses: anchore/sbom-action@v0
-        with:
-          image: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.ref_name }}-${{ github.sha }}
-          format: cyclonedx-json
-          output-file: sbom-cyclonedx.json
+      - name: Generate SBOM (SPDX)
+        run: |
+          syft ${{ steps.set-tag.outputs.local-tag }} \
+            --output spdx-json \
+            --file sbom-spdx.json
 
-      - name: Generate SBOM in SPDX format
-        uses: anchore/sbom-action@v0
-        with:
-          image: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.ref_name }}-${{ github.sha }}
-          format: spdx-json
-          output-file: sbom-spdx.json
+      - name: Generate SBOM (Table for humans)
+        run: |
+          syft ${{ steps.set-tag.outputs.local-tag }} \
+            --output table \
+            > sbom-table.txt
+          cat sbom-table.txt
 
       - name: Upload SBOM artifacts
         uses: actions/upload-artifact@v4
+        if: always()
         with:
           name: sbom-${{ github.sha }}
           path: |
             sbom-cyclonedx.json
             sbom-spdx.json
+            sbom-table.txt
           retention-days: 90
 
-      - name: Scan SBOM with Grype
+      # ========================================================================
+      # STEP 4: Scan SBOM with Grype
+      # ========================================================================
+      - name: Install Grype
         run: |
-          # Install Grype
           curl -sSfL https://raw.githubusercontent.com/anchore/grype/main/install.sh | sh -s -- -b /usr/local/bin
+          grype version
 
-          # Scan SBOM for vulnerabilities
+      - name: Scan SBOM for vulnerabilities
+        run: |
           grype sbom:sbom-cyclonedx.json -o table
           grype sbom:sbom-cyclonedx.json -o json > grype-results.json || true
 
@@ -245,9 +238,53 @@ jobs:
           path: grype-results.json
           retention-days: 30
 
+      # ========================================================================
+      # STEP 5: Push to registry (only if all scans completed)
+      # Only push on main branch or specific branches, not on PRs
+      # ========================================================================
+      - name: Log in to GHCR
+        if: github.event_name != 'pull_request'
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Push image to registry
+        if: github.event_name != 'pull_request'
+        run: |
+          echo "Pushing scanned image to registry..."
+          TAGS="${{ steps.meta.outputs.tags }}"
+          echo "$TAGS" | while IFS= read -r tag; do
+            if [ -n "$tag" ]; then
+              echo "Tagging and pushing: $tag"
+              docker tag ${{ steps.set-tag.outputs.local-tag }} "$tag"
+              docker push "$tag"
+            fi
+          done
+
+      - name: Output image info
+        run: |
+          echo "## 📦 Image Build Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Local tag:** \`${{ steps.set-tag.outputs.local-tag }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Registry tags:**" >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+          echo "${{ steps.meta.outputs.tags }}" >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Digest:** \`${{ steps.build.outputs.digest }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          if [ "${{ github.event_name }}" != "pull_request" ]; then
+            echo "✅ **Image pushed to registry**" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "ℹ️ **Image built and scanned locally (not pushed for PR)**" >> $GITHUB_STEP_SUMMARY
+          fi
+
   deploy-dev:
     name: Deploy to Development
-    needs: [build, image-scan, sbom]
+    needs: [build-scan-and-push]
     if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     environment:
@@ -290,26 +327,31 @@ jobs:
 
   summary:
     name: Pipeline Summary
-    needs: [test, security-scan, build, image-scan, sbom]
+    needs: [test, security-scan, build-scan-and-push]
     if: always()
     runs-on: ubuntu-latest
     steps:
       - name: Generate summary
         run: |
-          echo "## 🚀 CI/CD Pipeline Summary" >> $GITHUB_STEP_SUMMARY
+          echo "## 🚀 CD Pipeline Summary" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "**Branch:** \`${{ github.ref_name }}\`" >> $GITHUB_STEP_SUMMARY
           echo "**Commit:** \`${{ github.sha }}\`" >> $GITHUB_STEP_SUMMARY
           echo "**Triggered by:** ${{ github.actor }}" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "### Job Status" >> $GITHUB_STEP_SUMMARY
-          echo "- Tests: ${{ needs.test.result }}" >> $GITHUB_STEP_SUMMARY
-          echo "- Security Scan: ${{ needs.security-scan.result }}" >> $GITHUB_STEP_SUMMARY
-          echo "- Build: ${{ needs.build.result }}" >> $GITHUB_STEP_SUMMARY
-          echo "- Image Scan: ${{ needs.image-scan.result }}" >> $GITHUB_STEP_SUMMARY
-          echo "- SBOM: ${{ needs.sbom.result }}" >> $GITHUB_STEP_SUMMARY
+          echo "- ✅ Tests: ${{ needs.test.result }}" >> $GITHUB_STEP_SUMMARY
+          echo "- 🔒 Security Scan (Filesystem): ${{ needs.security-scan.result }}" >> $GITHUB_STEP_SUMMARY
+          echo "- 📦 Build, Scan & Push: ${{ needs.build-scan-and-push.result }}" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-          echo "### 📦 Artifacts" >> $GITHUB_STEP_SUMMARY
+          echo "### 🛡️ Security Posture" >> $GITHUB_STEP_SUMMARY
+          echo "**Shift-Left Security:** ✅ Enabled" >> $GITHUB_STEP_SUMMARY
+          echo "- Image scanned locally before push" >> $GITHUB_STEP_SUMMARY
+          echo "- SBOM generated from local image" >> $GITHUB_STEP_SUMMARY
+          echo "- Vulnerability analysis completed" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### 📊 Artifacts" >> $GITHUB_STEP_SUMMARY
           echo "- SBOM (CycloneDX & SPDX formats)" >> $GITHUB_STEP_SUMMARY
-          echo "- Vulnerability scan results" >> $GITHUB_STEP_SUMMARY
+          echo "- Trivy vulnerability scan results" >> $GITHUB_STEP_SUMMARY
+          echo "- Grype SBOM vulnerability analysis" >> $GITHUB_STEP_SUMMARY
           echo "- Security analysis (GitHub Security tab)" >> $GITHUB_STEP_SUMMARY

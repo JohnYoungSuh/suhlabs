@@ -24,6 +24,9 @@ spec:
         runAsUser: 1000
         fsGroup: 1000
 
+      # Service account with RBAC permissions
+      serviceAccountName: ai-ops-agent
+
       # Init container: Wait for certificate to be issued and mounted
       # Three-layer defense against race conditions:
       # 1. deploy.sh waits for Certificate Ready status

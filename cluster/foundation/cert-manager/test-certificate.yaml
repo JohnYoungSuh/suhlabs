@@ -54,9 +54,6 @@ spec:
 
   commonName: ai-ops-agent.default.svc.cluster.local
   dnsNames:
-    - ai-ops-agent
-    - ai-ops-agent.default
-    - ai-ops-agent.default.svc
     - ai-ops-agent.default.svc.cluster.local
     - ai-ops-agent.corp.local
 
@@ -89,9 +86,6 @@ spec:
 
   commonName: kubernetes.default.svc.cluster.local
   dnsNames:
-    - kubernetes
-    - kubernetes.default
-    - kubernetes.default.svc
     - kubernetes.default.svc.cluster.local
 
   duration: 720h  # 30 days

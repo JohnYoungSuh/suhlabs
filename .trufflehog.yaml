@@ -1,18 +1,18 @@
 # TruffleHog configuration for SuhLabs
 # https://github.com/trufflesecurity/trufflehog
 
-# Exclude documentation and template files
+# Exclude documentation and template files (regex patterns)
 exclude:
   paths:
-    - '*.md'
-    - '*.template'
-    - '*.example'
-    - 'docs/**'
-    - 'venv/**'
-    - '.venv/**'
-    - 'node_modules/**'
-    - '*.lock'
-    - 'package-lock.json'
+    - '.*\.md$'
+    - '.*\.template$'
+    - '.*\.example$'
+    - '^docs/'
+    - '^venv/'
+    - '^\.venv/'
+    - '^node_modules/'
+    - '.*\.lock$'
+    - 'package-lock\.json$'
 
 # Only report verified secrets (reduces false positives)
 only-verified: true

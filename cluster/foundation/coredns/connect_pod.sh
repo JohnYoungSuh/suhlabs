@@ -1,3 +1,5 @@
+#!/bin/bash
+# Connect to a debug pod with CoreDNS configuration mounted
 kubectl run debug-coredns --rm -it --restart=Never \
   --image=nicolaka/netshoot \
   --overrides='

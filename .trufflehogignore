@@ -1,14 +1,14 @@
-# TruffleHog ignore patterns
-*.md
-docs/**/*.md
-README.md
-HANDOFF.md
-*.template
-*.example
-node_modules/**
-venv/**
-.venv/**
-*.lock
-package-lock.json
-**/fixtures/**
-**/test/**/*.json
+# TruffleHog ignore patterns (regex syntax)
+.*\.md$
+docs/.*\.md$
+README\.md$
+HANDOFF\.md$
+.*\.template$
+.*\.example$
+node_modules/
+venv/
+\.venv/
+.*\.lock$
+package-lock\.json$
+.*/fixtures/
+.*/test/.*\.json$

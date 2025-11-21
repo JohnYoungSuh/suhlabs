@@ -2,7 +2,7 @@
 Core data models for AI Ops Agent
 """
 
-from typing import Dict, List, Optional
+from typing import Any, Dict, List, Optional
 from pydantic import BaseModel, Field
 from datetime import datetime
 from enum import Enum
@@ -45,7 +45,7 @@ class ExecutionPlan(BaseModel):
     intent: Intent
     playbook: Optional[str] = None
     terraform_module: Optional[str] = None
-    variables: Dict[str, any] = Field(default_factory=dict)
+    variables: Dict[str, Any] = Field(default_factory=dict)
     requires_approval: bool = True
     environment: str = "development"
     description: str

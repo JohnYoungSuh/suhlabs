@@ -13,9 +13,14 @@ VAULT_ADDR="${VAULT_ADDR:-http://localhost:8200}"
 echo "Checking Vault status..."
 
 # Port-forward to Vault
-kubectl port-forward -n vault svc/vault 8200:8200 &
-PF_PID=$!
-sleep 3
+if ! pgrep -f "port-forward.*vault.*8200" > /dev/null; then
+    kubectl port-forward -n vault svc/vault 8200:8200 &
+    PF_PID=$!
+    sleep 3
+else
+    echo "Port-forward already running"
+    PF_PID=""
+fi
 
 export VAULT_ADDR
 
@@ -38,6 +43,8 @@ else
 fi
 
 # Cleanup
-kill $PF_PID 2>/dev/null || true
+if [ -n "$PF_PID" ]; then
+    kill $PF_PID 2>/dev/null || true
+fi
 
 vault status

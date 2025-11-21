@@ -183,11 +183,13 @@ jobs:
 
       - name: Initialize Vault
         run: |
-          kubectl wait --for=condition=ready pod -l app=vault -n vault --timeout=120s || true
+          kubectl wait --for=condition=ready pod -l app.kubernetes.io/name=vault -n vault --timeout=120s || true
           sleep 10
           # Port forward to Vault
-          kubectl port-forward -n vault svc/vault 8200:8200 &
-          sleep 5
+          if ! pgrep -f "port-forward.*vault.*8200" > /dev/null; then
+            kubectl port-forward -n vault svc/vault 8200:8200 &
+            sleep 5
+          fi
           export VAULT_ADDR=http://localhost:8200
 
           # Initialize Vault if not already initialized
@@ -202,8 +204,10 @@ jobs:
           export VAULT_ADDR=http://localhost:8200
 
           # Restart port-forward if needed
-          kubectl port-forward -n vault svc/vault 8200:8200 &
-          sleep 5
+          if ! pgrep -f "port-forward.*vault.*8200" > /dev/null; then
+            kubectl port-forward -n vault svc/vault 8200:8200 &
+            sleep 5
+          fi
 
           # Extract unseal keys and unseal Vault
           if [ -f vault-keys.txt ]; then
@@ -232,8 +236,10 @@ jobs:
       - name: Deploy Vault PKI
         run: |
           # Ensure port-forward is running
-          kubectl port-forward -n vault svc/vault 8200:8200 &
-          sleep 5
+          if ! pgrep -f "port-forward.*vault.*8200" > /dev/null; then
+            kubectl port-forward -n vault svc/vault 8200:8200 &
+            sleep 5
+          fi
 
           cd cluster/foundation/vault-pki
           chmod +x init-vault-pki.sh verify-pki.sh
@@ -252,8 +258,10 @@ jobs:
       - name: Verify PKI
         run: |
           # Ensure port-forward is running
-          kubectl port-forward -n vault svc/vault 8200:8200 &
-          sleep 5
+          if ! pgrep -f "port-forward.*vault.*8200" > /dev/null; then
+            kubectl port-forward -n vault svc/vault 8200:8200 &
+            sleep 5
+          fi
 
           cd cluster/foundation/vault-pki
           if [ -f /home/runner/work/suhlabs/suhlabs/vault-keys.txt ]; then
@@ -288,8 +296,10 @@ jobs:
       - name: Run comprehensive verification
         run: |
           # Ensure port-forward is running
-          kubectl port-forward -n vault svc/vault 8200:8200 &
-          sleep 5
+          if ! pgrep -f "port-forward.*vault.*8200" > /dev/null; then
+            kubectl port-forward -n vault svc/vault 8200:8200 &
+            sleep 5
+          fi
 
           cd cluster/foundation
           chmod +x verify-all.sh
@@ -316,7 +326,7 @@ jobs:
           echo "=== CoreDNS Logs ==="
           kubectl logs -n kube-system -l k8s-app=kube-dns --tail=100 || true
           echo "=== Vault Logs ==="
-          kubectl logs -n vault -l app=vault --tail=100 || true
+          kubectl logs -n vault -l app.kubernetes.io/name=vault --tail=100 || true
           echo "=== cert-manager Logs ==="
           kubectl logs -n cert-manager -l app=cert-manager --tail=100 || true
           echo "=== All Pods ==="

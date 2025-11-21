@@ -15,7 +15,7 @@ echo ""
 
 # Step 1: Check if Vault pod is running
 echo "1. Checking Vault pod..."
-if ! kubectl get pod -n "$NAMESPACE" -l app=vault &>/dev/null; then
+if ! kubectl get pod -n "$NAMESPACE" -l app.kubernetes.io/name=vault &>/dev/null; then
     echo "✗ Vault pod not found. Deploy Vault first:"
     echo "  ./deploy.sh"
     exit 1
@@ -25,11 +25,17 @@ echo ""
 
 # Step 2: Port-forward to Vault
 echo "2. Setting up port-forward..."
-kubectl port-forward -n vault svc/vault 8200:8200 >/dev/null 2>&1 &
-PF_PID=$!
-sleep 3
-export VAULT_ADDR
-echo "✓ Port-forward active (PID: $PF_PID)"
+if ! pgrep -f "port-forward.*vault.*8200" > /dev/null; then
+    kubectl port-forward -n vault svc/vault 8200:8200 >/dev/null 2>&1 &
+    PF_PID=$!
+    sleep 3
+    export VAULT_ADDR
+    echo "✓ Port-forward active (PID: $PF_PID)"
+else
+    PF_PID=""
+    export VAULT_ADDR
+    echo "✓ Port-forward already running"
+fi
 echo ""
 
 # Step 3: Check and unseal if needed
@@ -40,7 +46,9 @@ if vault status 2>/dev/null | grep -q "Sealed.*true"; then
     if ! kubectl get secret -n "$NAMESPACE" "$SECRET_NAME" &>/dev/null; then
         echo "✗ Unseal keys not found in Kubernetes secret"
         echo "  Run: ./save-keys-to-k8s.sh .vault-keys.json"
-        kill $PF_PID 2>/dev/null || true
+        if [ -n "$PF_PID" ]; then
+            kill $PF_PID 2>/dev/null || true
+        fi
         exit 1
     fi
 
@@ -93,5 +101,9 @@ echo "Or export these variables manually:"
 echo "  export VAULT_ADDR=$VAULT_ADDR"
 echo "  export VAULT_TOKEN=$VAULT_TOKEN"
 echo ""
-echo "Note: Port-forward is running in background (PID: $PF_PID)"
-echo "      Kill with: kill $PF_PID"
+if [ -n "$PF_PID" ]; then
+    echo "Note: Port-forward started in background (PID: $PF_PID)"
+    echo "      Kill with: kill $PF_PID"
+else
+    echo "Note: Using existing port-forward"
+fi

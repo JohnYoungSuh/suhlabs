@@ -59,17 +59,22 @@ echo -e "${GREEN}✓ cert-manager verification complete${NC}"
 echo -e "${YELLOW}Step 4: Configuring Vault for cert-manager...${NC}"
 
 # Check if Vault is accessible
-if ! kubectl get pod -n vault -l app=vault &>/dev/null; then
+if ! kubectl get pod -n vault -l app.kubernetes.io/name=vault &>/dev/null; then
     echo -e "${RED}✗ Vault pod not found. Please deploy Vault first.${NC}"
-    echo "Run: cd cluster/foundation/softhsm && kubectl apply -f vault-deployment.yaml"
+    echo "Run: cd cluster/foundation/vault && ./deploy.sh"
     exit 1
 fi
 
-# Port-forward to Vault (run in background)
+# Port-forward to Vault (run in background if not already running)
 echo "Setting up Vault port-forward..."
-kubectl port-forward -n vault svc/vault 8200:8200 &
-VAULT_PF_PID=$!
-sleep 3
+if ! pgrep -f "port-forward.*vault.*8200" > /dev/null; then
+    kubectl port-forward -n vault svc/vault 8200:8200 &
+    VAULT_PF_PID=$!
+    sleep 3
+else
+    echo "Port-forward to Vault already running"
+    VAULT_PF_PID=""
+fi
 
 export VAULT_ADDR='http://localhost:8200'
 
@@ -80,7 +85,9 @@ if [ -z "${VAULT_TOKEN:-}" ]; then
     echo ""
     echo "You can find your root token from the Vault initialization output."
     echo "Then re-run this script."
-    kill $VAULT_PF_PID 2>/dev/null || true
+    if [ -n "$VAULT_PF_PID" ]; then
+        kill $VAULT_PF_PID 2>/dev/null || true
+    fi
     exit 1
 fi
 
@@ -98,15 +105,15 @@ echo "Extracting Kubernetes credentials from Vault pod..."
 
 # Wait for Vault pod to be ready
 echo "Waiting for Vault pod to be ready..."
-kubectl wait --for=condition=ready pod -l app=vault -n vault --timeout=120s || {
+kubectl wait --for=condition=ready pod -l app.kubernetes.io/name=vault -n vault --timeout=120s || {
     echo -e "${RED}✗ Vault pod not ready${NC}"
     kubectl get pods -n vault
     exit 1
 }
 
-VAULT_POD=$(kubectl get pod -n vault -l app=vault -o jsonpath='{.items[0].metadata.name}')
+VAULT_POD=$(kubectl get pod -n vault -l app.kubernetes.io/name=vault -o jsonpath='{.items[0].metadata.name}')
 if [ -z "$VAULT_POD" ]; then
-    echo -e "${RED}✗ No Vault pod found with label app=vault${NC}"
+    echo -e "${RED}✗ No Vault pod found with label app.kubernetes.io/name=vault${NC}"
     kubectl get pods -n vault --show-labels
     exit 1
 fi
@@ -163,8 +170,10 @@ vault write auth/kubernetes/role/cert-manager \
     policies=cert-manager \
     ttl=24h
 
-# Kill port-forward
-kill $VAULT_PF_PID 2>/dev/null || true
+# Kill port-forward if we started it
+if [ -n "$VAULT_PF_PID" ]; then
+    kill $VAULT_PF_PID 2>/dev/null || true
+fi
 
 echo -e "${GREEN}✓ Vault configured for cert-manager${NC}"
 

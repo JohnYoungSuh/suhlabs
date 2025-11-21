@@ -183,10 +183,10 @@ else
 fi
 
 log_test "Checking Vault pods..."
-VAULT_POD_COUNT=$(kubectl get pods -n vault -l app=vault --field-selector=status.phase=Running --no-headers 2>/dev/null | wc -l)
+VAULT_POD_COUNT=$(kubectl get pods -n vault -l app.kubernetes.io/name=vault --field-selector=status.phase=Running --no-headers 2>/dev/null | wc -l)
 if [ "$VAULT_POD_COUNT" -gt 0 ]; then
     log_success "Vault pods running ($VAULT_POD_COUNT)"
-    kubectl get pods -n vault -l app=vault
+    kubectl get pods -n vault -l app.kubernetes.io/name=vault
 else
     log_warning "No Vault pods running"
 fi
@@ -205,7 +205,7 @@ if [ "$VAULT_POD_COUNT" -gt 0 ]; then
     export VAULT_ADDR=http://localhost:8200
 
     # Get the Vault pod name dynamically
-    VAULT_POD=$(kubectl get pod -n vault -l app=vault -o jsonpath='{.items[0].metadata.name}' 2>/dev/null)
+    VAULT_POD=$(kubectl get pod -n vault -l app.kubernetes.io/name=vault -o jsonpath='{.items[0].metadata.name}' 2>/dev/null)
 
     # Try to get seal status
     if kubectl exec -n vault $VAULT_POD -- vault status &> /dev/null; then
@@ -226,7 +226,7 @@ fi
 
 log_test "Checking Vault seal type..."
 if [ "$VAULT_POD_COUNT" -gt 0 ]; then
-    VAULT_POD=$(kubectl get pod -n vault -l app=vault -o jsonpath='{.items[0].metadata.name}' 2>/dev/null)
+    VAULT_POD=$(kubectl get pod -n vault -l app.kubernetes.io/name=vault -o jsonpath='{.items[0].metadata.name}' 2>/dev/null)
     if kubectl exec -n vault $VAULT_POD -- vault status 2>/dev/null | grep -q "Seal Type"; then
         SEAL_TYPE=$(kubectl exec -n vault $VAULT_POD -- vault status 2>/dev/null | grep "Seal Type" | awk '{print $3}')
         log_success "Vault seal type: ${SEAL_TYPE}"
@@ -249,14 +249,21 @@ if [ "$VAULT_POD_COUNT" -gt 0 ]; then
 
     # Setup port-forward for Vault access
     echo "  Setting up port-forward to Vault..."
-    kubectl port-forward -n vault svc/vault 8200:8200 &> /dev/null &
-    PF_PID=$!
-    sleep 2
+    if ! pgrep -f "port-forward.*vault.*8200" > /dev/null; then
+        kubectl port-forward -n vault svc/vault 8200:8200 &> /dev/null &
+        PF_PID=$!
+        sleep 2
+    else
+        echo "  Port-forward already running"
+        PF_PID=""
+    fi
 
     # Check if we can access Vault
     if ! curl -sf http://localhost:8200/v1/sys/health &> /dev/null; then
         log_warning "Cannot access Vault API (may need token)"
-        kill $PF_PID 2>/dev/null || true
+        if [ -n "$PF_PID" ]; then
+            kill $PF_PID 2>/dev/null || true
+        fi
     else
         # Try to list secrets engines (requires token)
         if [ -n "${VAULT_TOKEN:-}" ]; then
@@ -276,7 +283,9 @@ if [ "$VAULT_POD_COUNT" -gt 0 ]; then
             echo "  Set VAULT_TOKEN to verify PKI configuration"
         fi
 
-        kill $PF_PID 2>/dev/null || true
+        if [ -n "$PF_PID" ]; then
+            kill $PF_PID 2>/dev/null || true
+        fi
     fi
 else
     log_warning "Vault not running, skipping PKI verification"
@@ -321,7 +330,7 @@ fi
 
 log_test "Testing Vault API accessibility..."
 if [ "$VAULT_POD_COUNT" -gt 0 ]; then
-    VAULT_POD=$(kubectl get pod -n vault -l app=vault -o jsonpath='{.items[0].metadata.name}' 2>/dev/null)
+    VAULT_POD=$(kubectl get pod -n vault -l app.kubernetes.io/name=vault -o jsonpath='{.items[0].metadata.name}' 2>/dev/null)
     # Check if Vault API responds
     if kubectl exec -n vault $VAULT_POD -- vault status 2>/dev/null | grep -q "Initialized"; then
         log_success "Vault API is accessible"
@@ -397,7 +406,7 @@ fi
 
 log_test "Checking Vault response times..."
 if [ "$VAULT_POD_COUNT" -gt 0 ]; then
-    VAULT_POD=$(kubectl get pod -n vault -l app=vault -o jsonpath='{.items[0].metadata.name}' 2>/dev/null)
+    VAULT_POD=$(kubectl get pod -n vault -l app.kubernetes.io/name=vault -o jsonpath='{.items[0].metadata.name}' 2>/dev/null)
     START=$(date +%s%N)
     kubectl exec -n vault $VAULT_POD -- vault status &> /dev/null || true
     END=$(date +%s%N)
@@ -448,7 +457,7 @@ if [ $FAILED -gt 0 ] || [ $WARNINGS -gt 0 ]; then
     echo "  1. Review failed/warning tests above"
     echo "  2. Check service logs:"
     echo "     kubectl logs -n kube-system -l k8s-app=kube-dns"
-    echo "     kubectl logs -n vault -l app=vault"
+    echo "     kubectl logs -n vault -l app.kubernetes.io/name=vault"
     echo "  3. Run individual verification scripts:"
     echo "     cd coredns && ./deploy.sh"
     echo "     cd softhsm && ./init-softhsm.sh"

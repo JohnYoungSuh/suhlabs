@@ -10,31 +10,31 @@ metadata:
 spec:
   # Keep pod running indefinitely for debugging
   containers:
-  - name: netshoot
-    image: nicolaka/netshoot:latest
-    imagePullPolicy: Always
+    - name: netshoot
+      image: nicolaka/netshoot:latest
+      imagePullPolicy: Always
 
-    # Keep container running
-    command:
-    - sleep
-    - "infinity"
+      # Keep container running
+      command:
+        - sleep
+        - "infinity"
 
-    # Security context - run as root for full debugging capabilities
-    securityContext:
-      runAsUser: 0
-      capabilities:
-        add:
-        - NET_ADMIN
-        - NET_RAW
+      # Security context - run as root for full debugging capabilities
+      securityContext:
+        runAsUser: 0
+        capabilities:
+          add:
+            - NET_ADMIN
+            - NET_RAW
 
-    # Resource limits
-    resources:
-      requests:
-        cpu: 100m
-        memory: 128Mi
-      limits:
-        cpu: 500m
-        memory: 512Mi
+      # Resource limits
+      resources:
+        requests:
+          cpu: 100m
+          memory: 128Mi
+        limits:
+          cpu: 500m
+          memory: 512Mi
 
   # DNS policy for testing DNS resolution
   dnsPolicy: ClusterFirst
@@ -57,37 +57,37 @@ kind: ClusterRole
 metadata:
   name: netshoot-debug-role
 rules:
-# Read-only access to most resources for debugging
-- apiGroups: [""]
-  resources:
-  - pods
-  - services
-  - endpoints
-  - namespaces
-  - nodes
-  - persistentvolumeclaims
-  - configmaps
-  - secrets
-  verbs: ["get", "list", "watch"]
-- apiGroups: ["apps"]
-  resources:
-  - deployments
-  - daemonsets
-  - statefulsets
-  - replicasets
-  verbs: ["get", "list", "watch"]
-- apiGroups: ["cert-manager.io"]
-  resources:
-  - certificates
-  - certificaterequests
-  - issuers
-  - clusterissuers
-  verbs: ["get", "list", "watch"]
-- apiGroups: ["networking.k8s.io"]
-  resources:
-  - networkpolicies
-  - ingresses
-  verbs: ["get", "list", "watch"]
+  # Read-only access to most resources for debugging
+  - apiGroups: [""]
+    resources:
+      - pods
+      - services
+      - endpoints
+      - namespaces
+      - nodes
+      - persistentvolumeclaims
+      - configmaps
+      - secrets
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["apps"]
+    resources:
+      - deployments
+      - daemonsets
+      - statefulsets
+      - replicasets
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["cert-manager.io"]
+    resources:
+      - certificates
+      - certificaterequests
+      - issuers
+      - clusterissuers
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["networking.k8s.io"]
+    resources:
+      - networkpolicies
+      - ingresses
+    verbs: ["get", "list", "watch"]
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
@@ -98,6 +98,6 @@ roleRef:
   kind: ClusterRole
   name: netshoot-debug-role
 subjects:
-- kind: ServiceAccount
-  name: netshoot-sa
-  namespace: default
+  - kind: ServiceAccount
+    name: netshoot-sa
+    namespace: default

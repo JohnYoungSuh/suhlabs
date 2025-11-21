@@ -5,14 +5,14 @@ metadata:
   namespace: kube-system
 spec:
   containers:
-  - name: debug
-    image: nicolaka/netshoot
-    command: ["sleep", "3600"]
-    volumeMounts:
-    - name: corp-zone
-      mountPath: /etc/coredns/corp.local.db
-      subPath: corp.local.db
+    - name: debug
+      image: nicolaka/netshoot
+      command: ["sleep", "3600"]
+      volumeMounts:
+        - name: corp-zone
+          mountPath: /etc/coredns/corp.local.db
+          subPath: corp.local.db
   volumes:
-  - name: corp-zone
-    configMap:
-      name: coredns
+    - name: corp-zone
+      configMap:
+        name: coredns

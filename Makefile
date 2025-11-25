@@ -90,13 +90,10 @@ help:
 # -----------------------------------------------------------------------------
 # Local Stack: Docker Compose + kind
 # -----------------------------------------------------------------------------
-dev-up: vault-up ollama-pull
+dev-up: ollama-pull
 	@echo "${GREEN}Starting local dev stack...${RESET}"
 	$(COMPOSE) up -d
-	@echo "Waiting for Vault..."
-	@sleep 5
-	$(VAULT) login root || true
-	@echo "Local stack ready: http://localhost:8200 (token: root)"
+	@echo "Local stack ready (Ollama + MinIO)"
 
 dev-down:
 	@echo "${GREEN}Stopping local dev stack...${RESET}"
@@ -106,12 +103,7 @@ dev-down:
 dev-logs:
 	$(COMPOSE) logs -f
 
-vault-up:
-	@echo "${GREEN}Starting Vault (dev mode)...${RESET}"
-	$(COMPOSE) up -d vault
 
-vault-down:
-	$(COMPOSE) rm -fsv vault
 
 ollama-pull:
 	@echo "${GREEN}Pulling Llama3.1 for AI agent...${RESET}"
@@ -246,9 +238,9 @@ test-services-prod:
 
 test-ai:
 	@echo "${GREEN}Testing AI Ops Agent (NL → Intent)...${RESET}"
-	curl -s -X POST http://localhost:30080/api/v1/intent \
+	curl -s -X POST http://localhost:30080/api/v1/chat \
 	  -H "Content-Type: application/json" \
-	  -d '{"nl": "Add DNS A record for test.local to 192.168.1.100"}' | jq
+	  -d '{"query": "Add DNS A record for test.local to 192.168.1.100", "user_id": "test-user", "user_email": "test@example.com"}' | jq
 
 test-ai-prod:
 	@echo "${GREEN}Testing AI agent in prod...${RESET}"

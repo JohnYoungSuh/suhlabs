@@ -56,8 +56,8 @@ policy_engine = PolicyEngine(policies_path=Path("config/mcp-policies.yaml"))
 approval_workflow = ApprovalWorkflow()
 ml_logger = MLLogger(log_dir=ML_LOG_DIR)
 ml_analytics = MLAnalytics(log_dir=ML_LOG_DIR)
-onboarding_flow = OnboardingFlow()
 domain_manager = DomainManager()
+onboarding_flow = OnboardingFlow(domain_manager=domain_manager)
 
 logger.info("AI Ops/Sec Agent initialized")
 

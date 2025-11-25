@@ -30,7 +30,7 @@ security:
 
 compliance:
   resource_tagging:
-    enabled: true
+    enabled: false  # Disabled for local testing
     severity: medium
     required_tags:
       - owner

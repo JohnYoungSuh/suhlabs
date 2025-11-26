@@ -144,7 +144,9 @@ initialize_vault() {
 unseal_vault() {
     log_step "Unsealing Vault..."
 
-    if ! is_vault_sealed; then
+    if is_vault_sealed; then
+        log_info "Vault is sealed, proceeding with unseal..."
+    else
         log_success "✅ Vault is already unsealed!"
         return 0
     fi
@@ -158,7 +160,7 @@ unseal_vault() {
     log_info "Reading unseal keys from: $KEYS_FILE"
 
     # Unseal with first 3 keys
-    for i in {0..2}; do
+    for i in 0 1 2; do
         local key
         key=$(jq -r ".unseal_keys_b64[$i]" "$KEYS_FILE")
         log_info "Using unseal key $((i+1))/3..."

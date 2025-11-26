@@ -31,7 +31,7 @@ LOG_FILE="${TEST_DIR}/validation-log.txt"
 FAILURE_REPORT="${TEST_DIR}/failure-report.md"
 
 # Counters
-PHASE_TOTAL=12
+PHASE_TOTAL=11
 PHASE_CURRENT=0
 FAILURES=0
 
@@ -187,6 +187,11 @@ execute_cmd \
     "cp -r /home/suhlabs/projects/suhlabs/aiops-substrate/cluster/foundation ${TEST_DIR}/" \
     "Copy foundation scripts"
 
+# Make all scripts executable
+execute_cmd \
+    "chmod -R +x ${TEST_DIR}/foundation/**/*.sh" \
+    "Make foundation scripts executable"
+
 execute_cmd \
     "cp -r /home/suhlabs/projects/suhlabs/aiops-substrate/bootstrap ${TEST_DIR}/" \
     "Copy bootstrap configs"
@@ -200,11 +205,11 @@ nodes:
 - role: control-plane
   extraPortMappings:
   - containerPort: 80
-    hostPort: 80
+    hostPort: 8080
   - containerPort: 443
-    hostPort: 443
+    hostPort: 8443
   - containerPort: 30080
-    hostPort: 30080
+    hostPort: 30081
 - role: worker
 EOF
 
@@ -240,25 +245,7 @@ execute_cmd \
 cd "$TEST_DIR"
 
 # ============================================================================
-# Phase 3: SoftHSM Deployment
-# ============================================================================
-
-log_phase "SoftHSM Deployment"
-
-cd foundation/softhsm
-
-execute_cmd \
-    "./init-softhsm.sh" \
-    "Deploy SoftHSM" || exit 1
-
-execute_cmd \
-    "kubectl wait --for=condition=ready pod -l app=softhsm -n ${VAULT_NAMESPACE} --timeout=120s" \
-    "Wait for SoftHSM pod" || exit 1
-
-cd "$TEST_DIR"
-
-# ============================================================================
-# Phase 4: Vault Deployment
+# Phase 3: Vault Deployment (Following known pattern from lessons learned)
 # ============================================================================
 
 log_phase "Vault Deployment"
@@ -269,16 +256,49 @@ execute_cmd \
     "./deploy.sh" \
     "Deploy Vault" || exit 1
 
-execute_cmd \
-    "kubectl wait --for=condition=ready pod -l app.kubernetes.io/name=vault -n ${VAULT_NAMESPACE} --timeout=180s" \
-    "Wait for Vault pod" || exit 1
+# KNOWN PATTERN: Wait for pod to exist and be Running (not Ready - Vault needs init/unseal)
+log_info "Waiting for Vault pod to be Running..."
 
-# Get Vault pod name
-VAULT_POD=$(kubectl get pod -n ${VAULT_NAMESPACE} -l app.kubernetes.io/name=vault -o jsonpath='{.items[0].metadata.name}')
+# Wait up to 5 minutes
+for i in $(seq 1 60); do
+    if kubectl get pod vault-0 -n ${VAULT_NAMESPACE} &>/dev/null; then
+        PHASE=$(kubectl get pod vault-0 -n ${VAULT_NAMESPACE} -o jsonpath='{.status.phase}' 2>/dev/null)
+        if [ "$PHASE" = "Running" ]; then
+            log_success "Vault pod is Running"
+            break
+        fi
+    fi
+    if [ $i -eq 60 ]; then
+        log_error "Timeout waiting for Vault pod"
+        kubectl get pods -n ${VAULT_NAMESPACE}
+        exit 1
+    fi
+    sleep 5
+done
 
+# Vault pod name is always vault-0 (StatefulSet from Helm)
+VAULT_POD="vault-0"
+
+log_info "Vault pod: ${VAULT_POD}"
+
+# KNOWN PATTERN: Initialize and unseal Vault automatically
+log_info "Running vault-bootstrap.sh auto (init + unseal)..."
+chmod +x ./vault-bootstrap.sh
 execute_cmd \
-    "kubectl exec -n ${VAULT_NAMESPACE} ${VAULT_POD} -- vault status" \
-    "Verify Vault status" || exit 1
+    "./vault-bootstrap.sh auto" \
+    "Initialize and unseal Vault" || exit 1
+
+# Now Vault should be unsealed (vault status returns 0 if unsealed, 2 if sealed)
+log_info "Checking Vault status..."
+kubectl exec -n ${VAULT_NAMESPACE} ${VAULT_POD} -- vault status || {
+    EXIT_CODE=$?
+    if [ $EXIT_CODE -eq 2 ]; then
+        log_error "Vault is still sealed after bootstrap"
+        log_error "Check if vault-bootstrap.sh unseal step failed"
+        exit 1
+    fi
+}
+log_success "Vault is unsealed and ready"
 
 cd "$TEST_DIR"
 

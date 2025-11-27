@@ -1,0 +1,38 @@
+# Gitleaks Baseline - Historical Findings Already Remediated
+# These findings are from old commits before we implemented the template pattern.
+# Current code uses .template files with environment variable placeholders.
+# Created: 2025-11-27
+
+# Old photoprism YAML files (now using .template pattern with Vault integration)
+# Commit: 21ef7a8c8ab776f72a342141994f101495536c84 (2025-11-18)
+21ef7a8c8ab776f72a342141994f101495536c84:services/photoprism/kubernetes/02-minio.yaml:generic-password:12
+21ef7a8c8ab776f72a342141994f101495536c84:services/photoprism/kubernetes/03-mariadb.yaml:generic-password:11
+21ef7a8c8ab776f72a342141994f101495536c84:services/photoprism/kubernetes/03-mariadb.yaml:generic-password:14
+21ef7a8c8ab776f72a342141994f101495536c84:services/photoprism/kubernetes/04-photoprism.yaml:generic-password:67
+21ef7a8c8ab776f72a342141994f101495536c84:services/photoprism/kubernetes/04-photoprism.yaml:generic-password:70
+21ef7a8c8ab776f72a342141994f101495536c84:services/photoprism/kubernetes/06-authelia.yaml:generic-password:110
+21ef7a8c8ab776f72a342141994f101495536c84:services/photoprism/kubernetes/06-authelia.yaml:generic-password:119
+
+# Python password generation code (false positive - this is password generation, not a secret)
+# Commit: 33dac0d2e839bbb6b57c0a768e86a62b6a3d0960 (2025-11-18)
+33dac0d2e839bbb6b57c0a768e86a62b6a3d0960:cluster/ai-ops-agent/ai_ops_agent/onboarding/__init__.py:generic-password:458
+33dac0d2e839bbb6b57c0a768e86a62b6a3d0960:cluster/ai-ops-agent/ai_ops_agent/onboarding/__init__.py:generic-password:461
+
+# Old test file (no longer exists in current codebase)
+# Commit: 433732fd7d5ce23ef4401f3c5c80c1fcf98869d0 (2025-11-07)
+433732fd7d5ce23ef4401f3c5c80c1fcf98869d0:tests/integration/test_docker_services.py:generic-password:139
+
+# Ansible template lookups (false positive - these are Ansible password generation)
+# Commit: 5f4bc2f305021db3e154b14665e425c455c907d2 (2025-11-06)
+5f4bc2f305021db3e154b14665e425c455c907d2:ansible/roles/freeipa/tasks/main.yml:generic-password:32
+5f4bc2f305021db3e154b14665e425c455c907d2:ansible/roles/freeipa/tasks/main.yml:generic-password:33
+
+# Old minio.yaml file (no longer exists in current codebase)
+# Commit: ed15ffb86a37b21a70cf09dc08c2133b1a854db3 (2025-11-06)
+ed15ffb86a37b21a70cf09dc08c2133b1a854db3:cluster/core/minio/minio.yaml:generic-password:90
+
+# Note: All these findings have been remediated in the current codebase:
+# - Photoprism YAML files now use .template pattern with ${VAULT_*} placeholders
+# - Deployment scripts properly inject secrets from Vault at runtime
+# - Test files removed or updated to use environment variables
+# - Template pattern documented in SECRETS-REMEDIATION-PLAN.md

@@ -15,6 +15,9 @@ paths = [
     '''node_modules/''',
     '''package-lock\.json$''',
     '''\.lock$''',
+    '''SECRETS-REMEDIATION-PLAN\.md''',  # Security documentation
+    '''SECURITY-SCAN-REVIEW\.md''',  # Security review documentation
+    '''docs/14-DAY-SPRINT\.md''',  # Sprint documentation with examples
 ]
 
 # Allowlist specific findings (use with caution!)
@@ -31,6 +34,13 @@ regexes = [
     '''token:\s+root''',  # Vault dev mode token in documentation
     '''export\s+VAULT_TOKEN=root''',  # Example commands in docs
     '''export\s+MINIO_.*=minioadmin''',  # MinIO example credentials in docs
+    '''Password="\$\(openssl rand''',  # Password generation with openssl
+    '''password="\$\(openssl rand''',  # Password generation with openssl
+    '''Password="\$\{[a-zA-Z_]+\}"''',  # Bash variable references
+    '''password = .*.join\(secrets''',  # Python secrets module usage
+    '''\{\{ lookup\(''',  # Ansible template lookups
+    '''hash-password .yourpassword.''',  # Documentation examples for password hashing
+    '''password\"\"\"\n\n\s+alphabet''',  # Python password generation function
 ]
 
 # Custom rules
@@ -122,10 +132,17 @@ regexes = [
     '''your-password''',
     '''example''',
     '''VAULT_''',
+    '''\$\(openssl rand''',  # Password generation commands
+    '''\$\{[A-Z_]+\}''',      # Environment variable placeholders
+    '''\{\{ lookup\(''',      # Ansible lookups
+    '''= .*.join\(secrets''', # Python secrets module
 ]
 paths = [
     '''\.template$''',
     '''\.md$''',
+    '''\.template\.yaml$''',
+    '''scripts/deploy-with-vault\.sh''',  # Deployment script with password generation
+    '''services/photoprism/deploy-family\.sh''',  # Deployment script
 ]
 
 [[rules]]

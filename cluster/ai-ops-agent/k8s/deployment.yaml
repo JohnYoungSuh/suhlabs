@@ -73,9 +73,9 @@ spec:
             - name: ENVIRONMENT
               value: "production"
             - name: OLLAMA_HOST
-              value: "http://172.19.0.1:11434"
+              value: "http://172.19.0.5:11434"
             - name: QDRANT_HOST
-              value: "http://172.19.0.1:6333"
+              value: "http://172.19.0.6:6333"
             - name: TLS_CERT_FILE
               value: /etc/tls/tls.crt
             - name: TLS_KEY_FILE

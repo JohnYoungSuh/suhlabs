@@ -2,6 +2,48 @@
 
 ---
 
+## AI Ops Agent - Ollama/Qdrant Network Connectivity (2025-11-25)
+
+**Issue:** AI Ops agent requests hanging indefinitely when trying to use LLM-powered intent parsing.
+
+**Root Causes:**
+1. **Qdrant not running** - RAG retriever hung waiting for Qdrant vector database
+2. **Network isolation** - Ollama/Qdrant containers on `bootstrap_default` network, Kind cluster on `kind` network
+3. **Mistral model too slow** - 7.2B parameter model times out (60s+) on CPU when using `"format": "json"` constraint
+
+**Solutions Applied:**
+1. Added Qdrant to `bootstrap/docker-compose.yml`
+2. Connected services to Kind network:
+   ```bash
+   docker network connect kind bootstrap-ollama-1
+   docker network connect kind bootstrap-qdrant-1
+   docker network connect kind bootstrap-minio-1
+   ```
+3. Updated deployment with correct IPs:
+   - Ollama: `http://172.19.0.5:11434`
+   - Qdrant: `http://172.19.0.6:6333`
+
+**LLM Performance Notes:**
+- Mistral (7.2B params) on CPU: 60+ seconds per inference with JSON format constraint
+- Fallback intent parsing works (confidence: 0.3) when LLM times out
+- Recommendation: Use smaller model (Phi 2.7B) or disable LLM intent parsing for CPU-only deployments
+- Alternative: Add GPU support or increase timeout to 120s+
+
+**Files Modified:**
+- `bootstrap/docker-compose.yml` - Added Qdrant service
+- `cluster/ai-ops-agent/k8s/deployment.yaml` - Updated OLLAMA_HOST and QDRANT_HOST environment variables
+
+**Validation:**
+```bash
+# Test Ollama connectivity from pod
+kubectl exec -n default <pod> -- python3 -c "import urllib.request; print(urllib.request.urlopen('http://172.19.0.5:11434/api/tags', timeout=5).read().decode())"
+
+# Test AI Ops agent
+curl -X POST http://localhost:30080/api/v1/chat -H "Content-Type: application/json" -d '{"query": "test", "user_id": "test", "user_email": "test@example.com"}'
+```
+
+---
+
 ## 🚨 CRITICAL: Pre-Implementation Checklist
 
 **MANDATORY STEP for ALL future development, configuration, and deployment:**

@@ -1,0 +1,32 @@
+---
+- name: Check if K3s is already installed
+  stat:
+    path: /usr/local/bin/k3s
+  register: k3s_check
+
+- name: Install K3s (Initial Server)
+  shell: |
+    curl -sfL https://get.k3s.io | sh -s - server \
+      --cluster-init \
+      --disable traefik \
+      --disable servicelb \
+      --write-kubeconfig-mode=644 \
+      --node-name={{ inventory_hostname }}
+  when: not k3s_check.stat.exists
+  environment:
+    INSTALL_K3S_VERSION: "v1.28.5+k3s1"
+
+- name: Wait for K3s token
+  wait_for:
+    path: /var/lib/rancher/k3s/server/token
+    state: present
+
+- name: Fetch K3s Token
+  slurp:
+    src: /var/lib/rancher/k3s/server/token
+  register: k3s_token_b64
+
+- name: Store token as fact
+  set_fact:
+    k3s_token: "{{ k3s_token_b64['content'] | b64decode | trim }}"
+    cacheable: yes

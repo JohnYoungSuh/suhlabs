@@ -7,6 +7,7 @@ Deploy an ARM-based board running OpenMediaVault (OMV) as a front-end appliance 
 ## Hardware Selection
 
 **See [Hardware Analysis & Cost Structure](FAMILY-SERVICES-APPLIANCE-HARDWARE.md) for:**
+
 - Detailed hardware recommendations across three tiers (Basic, Pro, Premium)
 - Complete cost breakdowns and BOMs
 - Performance comparisons and sizing guidance
@@ -14,7 +15,8 @@ Deploy an ARM-based board running OpenMediaVault (OMV) as a front-end appliance 
 - Power consumption and cooling requirements
 
 **Quick Reference:**
-- **Basic Tier** ($165-204): Single Orange Pi 5 (8GB) - 2-4 users
+
+- **Basic Tier** ($195-234): Single Orange Pi 5 (16GB) - 2-4 users ⭐ MVP Recommended
 - **Pro Tier** ($654-890): Dual Orange Pi 5 Plus (16GB) - 4-8 users, HA ⭐ Recommended
 - **Premium Tier** ($1,440-3,920): Multiple options for 8-15+ users
 
@@ -26,12 +28,43 @@ Deploy an ARM-based board running OpenMediaVault (OMV) as a front-end appliance 
 - **Integration**: Connect to existing AIOps substrate for monitoring and automation
 - **Philosophy**: Self-hosted, privacy-focused family services
 
+### System Architecture
+
+```mermaid
+graph TD
+    User((User)) -->|HTTPS| Ingress[K3s Ingress Controller]
+
+    subgraph "K3s Cluster (3 Nodes)"
+        subgraph "Node 1: Control Plane"
+            API[K8s API Server]
+            DNS[CoreDNS]
+        end
+
+        subgraph "Node 2: Suhlabs App Layer"
+            UI[Pod: Suhlabs Frontend]
+            Agent[Pod: Suhlabs LLM Agent]
+        end
+
+        subgraph "Node 3: Governance Layer"
+            Gov[Pod: Governance Framework]
+        end
+    end
+
+    Ingress --> UI
+    UI -->|REST/gRPC| Agent
+    Agent -->|Validation Request| Gov
+    Gov -->|Policy Check| DB[(Policy DB / Rules)]
+
+    Agent -.->|Authorized Prompt| LLM((External LLM API))
+```
+
 ## MVP Services
 
 ### Core Services
 
 1. **PhotoPrism** - Photo Management & Sharing
-   - Repository: https://github.com/photoprism/
+
+   - Repository: <https://github.com/photoprism/>
    - AI-powered photo organization
    - Face recognition and automatic tagging
    - Mobile apps for photo upload
@@ -39,6 +72,7 @@ Deploy an ARM-based board running OpenMediaVault (OMV) as a front-end appliance 
    - **Hardware Requirements**: 2-4GB RAM, benefits from GPU acceleration (Premium tier)
 
 2. **Email Server**
+
    - Options: Mailcow, Mailu, or Mail-in-a-Box
    - Full-featured email with SMTP/IMAP
    - Spam filtering
@@ -47,13 +81,14 @@ Deploy an ARM-based board running OpenMediaVault (OMV) as a front-end appliance 
    - **Hardware Requirements**: 512MB-1GB RAM, TLS certificate required
 
 3. **DNS & DHCP Services**
+
    - **Architecture Options**:
      - **Option A**: dnsmasq (standalone) - Lightweight DNS/DHCP, local resolution, custom DNS records
      - **Option B**: Pi-hole (includes dnsmasq) - All of Option A + ad-blocking web UI
      - **Option C**: AdGuard Home - Alternative to Pi-hole with modern UI
    - DNS-over-HTTPS (DoH) support
    - Network-wide privacy protection
-   - Custom local domain resolution (e.g., *.home.lan)
+   - Custom local domain resolution (e.g., \*.home.lan)
    - **k3s Integration** (Validated Architecture):
      - **CoreDNS** (k3s internal): Provides HA for services
        - Service discovery and load balancing across pods
@@ -76,11 +111,12 @@ Deploy an ARM-based board running OpenMediaVault (OMV) as a front-end appliance 
    - **Hardware Requirements**: 20-50MB RAM, minimal CPU
 
 4. **TLS/SSL Certificate Management**
+
    - **cert-manager** (deployed in k3s) - Automated certificate lifecycle
    - **Certificate Strategies**:
      - **Option A - Internal Only** (Recommended for home use):
        - Self-signed CA or internal CA (mkcert, step-ca)
-       - Wildcard cert for *.home.lan
+       - Wildcard cert for \*.home.lan
        - Install CA cert on family devices once
        - No external dependencies, fully private
      - **Option B - Let's Encrypt** (If externally accessible):
@@ -99,36 +135,47 @@ Deploy an ARM-based board running OpenMediaVault (OMV) as a front-end appliance 
      - All web-based admin interfaces
    - **Hardware Requirements**: Minimal (<100MB RAM)
 
+5. **Backup Service** (CRITICAL for MVP)
+
+   - Automated backup solution (Restic, Duplicati)
+   - Backup to external storage or cloud (Backblaze B2/AWS S3)
+   - **Goal**: 3-2-1 Backup Rule compliance
+   - **Hardware Requirements**: Minimal CPU/RAM, requires adequate storage
+
+6. **Dashboard / Landing Page**
+   - **Homepage** or **Dashy**
+   - Unified entry point for family members (e.g., http://home.lan)
+   - No need to remember ports or service names
+   - Status indicators for services
+   - **Hardware Requirements**: Minimal (<100MB RAM)
+
 ### Supporting Services
 
-5. **File Storage & Sync**
+7. **File Storage & Sync**
+
    - Nextcloud or Seafile
    - Cross-device file synchronization
    - Shared family folders
    - Document collaboration
    - **Hardware Requirements**: 512MB-2GB RAM, scales with active users
 
-6. **Calendar & Contacts**
+8. **Calendar & Contacts**
+
    - CalDAV/CardDAV server (Radicale or Nextcloud)
    - Family calendar sharing
    - Contact synchronization across devices
    - **Hardware Requirements**: 256MB-512MB RAM
 
-7. **Media Server** (Optional for MVP)
+9. **Media Server** (Optional for MVP)
    - Jellyfin or Plex
    - Family media library
    - Streaming to various devices
    - **Hardware Requirements**: 2-4GB RAM, transcoding benefits from GPU (Premium tier)
 
-8. **Backup Service**
-   - Automated backup solution (Restic, Duplicati)
-   - Backup to external storage or cloud
-   - Disaster recovery capability
-   - **Hardware Requirements**: Minimal CPU/RAM, requires adequate storage
-
 ## Resource Planning
 
 ### Memory Requirements Summary
+
 ```
 k3s base:                    512MB-1GB
 CoreDNS:                     15-30MB
@@ -139,12 +186,14 @@ Nextcloud:                   512MB-2GB
 cert-manager:                50-100MB
 Monitoring (Prometheus):     256-512MB
 ─────────────────────────────────────
-Minimum (Basic):             4-6GB
-Recommended (Pro):           8-12GB per node
-Optimal (Premium):           16-32GB per node
+Minimum (Basic - 8GB):     6-7GB (Risky)
+Recommended (Basic - 16GB):  8-12GB (Safe)
+Pro Tier (HA):               16GB per node
+Optimal (Premium):           32GB per node
 ```
 
 ### Storage Requirements
+
 - **System/OS**: 32-64GB
 - **Container Images**: 10-20GB
 - **PhotoPrism**: 100GB-2TB (depends on photo library)
@@ -154,6 +203,7 @@ Optimal (Premium):           16-32GB per node
 - **Recommended**: Use separate NAS for large data storage (Premium tier)
 
 ### Network Requirements
+
 - **Basic**: 1GbE sufficient for 2-4 users
 - **Pro**: 2.5GbE recommended for 4-8 users with active file sync
 - **Premium**: 2.5GbE minimum, 10GbE for media streaming and NAS
@@ -205,6 +255,7 @@ Optimal (Premium):           16-32GB per node
 ```
 
 **Benefits:**
+
 - Automatic pod failover between nodes
 - Zero-downtime updates
 - Hardware failure tolerance
@@ -234,17 +285,19 @@ Optimal (Premium):           16-32GB per node
 ## Deployment Phases
 
 ### Phase 1: MVP Deployment (Basic Tier)
+
 **Timeline:** 1-2 weeks  
 **Budget:** $200-250
 
-1. Deploy single ARM board
+1. Deploy single ARM board (16GB RAM model)
 2. Install OpenMediaVault base
-3. Deploy core services (PhotoPrism, DNS/DHCP, cert-manager)
-4. Configure basic monitoring
-5. Test with family members
-6. Establish backup routine
+3. Deploy core services (PhotoPrism, DNS/DHCP, Dashboard)
+4. Configure Automated Backups (MANDATORY)
+5. Test with family members via Dashboard
+6. Monitor RAM usage heavily during PhotoPrism indexing
 
 ### Phase 2: Scaling to HA (Pro Tier)
+
 **Timeline:** 2-4 weeks  
 **Incremental Budget:** $450-650
 
@@ -256,6 +309,7 @@ Optimal (Premium):           16-32GB per node
 6. Configure automated failover testing
 
 ### Phase 3: Production Hardening (Pro+/Premium)
+
 **Timeline:** 4-8 weeks  
 **Incremental Budget:** $600-1,200
 

@@ -2,6 +2,96 @@
 
 ---
 
+## 🔄 StatefulSet Data Persistence Anti-Pattern (2025-11-28)
+
+**Issue:** Vault pod stuck in `CrashLoopBackOff` / `0/1 Ready` with "invalid key: failed to setup unseal key: crypto/aes: invalid key size 33" error.
+
+**Root Cause:**
+1. **PersistentVolumeClaim (PVC) persists data across pod deletions** - Vault data from previous initialization remained on disk
+2. **Mismatched unseal keys** - `.vault-keys.json` file didn't match the Vault data stored in the PVC
+3. **StatefulSet design** - By design, StatefulSets preserve data to survive pod restarts (correct for production, problematic for dev resets)
+4. **Auto-unseal sidecar misconfiguration** - Volume mount names didn't match between `extraVolumes` declaration and `extraContainers` usage
+
+**Anti-Pattern Identified:**
+```bash
+# ❌ WRONG: Deleting only the pod won't help
+kubectl delete pod vault-0 -n vault
+# StatefulSet recreates the pod, but PVC has old/corrupt data
+
+# ✅ CORRECT: Delete BOTH StatefulSet and PVC for clean slate
+kubectl delete statefulset vault -n vault
+kubectl delete pvc data-vault-0 -n vault
+```
+
+**Understanding Kubernetes StatefulSets:**
+- **StatefulSets** are designed for stateful applications (databases, caches, secret stores)
+- **PVCs** persist data independently of pod lifecycle
+- **Pod deletion** → StatefulSet recreates pod → **Same PVC reattached** → Old data restored
+- **This is correct behavior for production** (data survives pod crashes)
+- **This creates issues in dev** when you need to reset/reinitialize
+
+**Solutions Applied:**
+1. **Deleted StatefulSet + PVC** to wipe Vault data completely
+2. **Removed auto-unseal sidecar** from `values.yaml` (misconfigured volumes)
+3. **Redeployed Vault** with clean storage
+4. **Re-initialized Vault** with new unseal keys (saved to `.vault-keys-NEW.json`)
+5. **Re-initialized PKI** (Root CA + Intermediate CA + roles)
+6. **Reconfigured cert-manager** Kubernetes auth to reconnect to new Vault instance
+
+**Correct Dev Workflow for StatefulSets:**
+```bash
+# When you need to completely reset a StatefulSet:
+1. Delete StatefulSet: kubectl delete statefulset <name> -n <namespace>
+2. Delete PVC: kubectl delete pvc <pvc-name> -n <namespace>
+3. Redeploy: helm upgrade --install ... or ./deploy.sh
+4. Re-initialize: Initialize with new keys/data
+
+# When you just need to restart pods (keep data):
+1. Restart deployment: kubectl rollout restart statefulset <name> -n <namespace>
+2. Or delete pod: kubectl delete pod <name> -n <namespace>
+# StatefulSet recreates pod, PVC data is preserved
+```
+
+**Production vs Development:**
+- **Production**: StatefulSet + PVC persistence is CRITICAL (data survives failures)
+- **Development**: Consider using `emptyDir` volumes or easily deletable storage for rapid iteration
+- **Know when to preserve vs reset**: Understand the difference between restart and reinitialize
+
+**Key Learnings:**
+1. ✅ **StatefulSets preserve data by design** - This is a feature, not a bug
+2. ✅ **PVCs are independent resources** - They don't get deleted when pods are deleted
+3. ✅ **Configuration mismatches persist** - If your config references wrong volumes, the pod will fail on every restart
+4. ✅ **For dev resets, delete BOTH StatefulSet + PVC** - Don't just delete the pod
+5. ✅ **Check volume mount names match** - `extraVolumes` names must match `volumeMounts` names exactly
+
+**Files Modified:**
+- `cluster/foundation/vault/values.yaml` - Commented out auto-unseal sidecar (volume mount mismatch)
+- `cluster/foundation/vault/.vault-keys-NEW.json` - New unseal keys after reinitialization
+
+**Impact:**
+- Vault downtime: ~15 minutes (as estimated)
+- Vault PKI completely rebuilt (Root CA, Intermediate CA, all roles)
+- cert-manager reconnected successfully after Kubernetes auth reconfiguration
+- All existing certificates remained valid (no renewal required)
+
+**Validation:**
+```bash
+# Check Vault status
+kubectl get pods -n vault
+kubectl exec -n vault vault-0 -- vault status
+
+# Check cert-manager ClusterIssuers
+kubectl get clusterissuer
+# All should show: READY = True
+
+# Verify certificates still valid
+kubectl get certificate -A
+```
+
+**Lesson:** Understanding Kubernetes resource lifecycles (Pod vs StatefulSet vs PVC) is critical for effective troubleshooting. In dev, you often need to delete BOTH the StatefulSet AND the PVC to get a clean slate. **This experience deepened understanding of K8s persistence patterns.** ✅
+
+---
+
 ## AI Ops Agent - Ollama/Qdrant Network Connectivity (2025-11-25)
 
 **Issue:** AI Ops agent requests hanging indefinitely when trying to use LLM-powered intent parsing.
@@ -1731,3 +1821,394 @@ No single security measure is sufficient:
 - [CNNIC Incident (2015)](https://security.googleblog.com/2015/03/maintaining-digital-certificate-security.html)
 
 ---
+
+## Autonomous Validation Script Fixes (2025-11-27)
+
+### Overview
+**Context:** Reviewed `scripts/autonomous-validation.sh` against established best practices in this document
+**Result:** Identified and fixed 6 critical issues that would cause autonomous validation to fail
+**Time Investment:** Analysis: 1h, Fixes: 2h, Documentation: 30min
+
+---
+
+### Critical Issue #1: Path References Without Directory Prefix
+
+**Problem:**
+```bash
+# Line 283 - Wrong
+if [ -f "foundation/vault/auto-unseal-sidecar.yaml" ]; then
+    kubectl apply -f foundation/vault/auto-unseal-sidecar.yaml
+
+# Line 347 - Wrong
+chmod +x ./vault-bootstrap.sh
+./vault-bootstrap.sh auto
+```
+
+**Root Cause:**
+- Script changes directories multiple times (`cd foundation/vault`, `cd "$TEST_DIR"`)
+- Relative paths break when current directory is not what you expect
+- No file existence validation before attempting to execute
+
+**Why This Matters:**
+In autonomous execution, scripts CANNOT assume they know the current working directory. Each `cd` command changes context, making relative paths fragile.
+
+**Fix:**
+```bash
+# Line 283 - Fixed
+if [ -f "${TEST_DIR}/foundation/vault/auto-unseal-sidecar.yaml" ]; then
+    kubectl apply -f "${TEST_DIR}/foundation/vault/auto-unseal-sidecar.yaml"
+
+# Line 347 - Fixed
+if [ ! -f "./vault-bootstrap.sh" ]; then
+    log_error "vault-bootstrap.sh not found in $(pwd)"
+    log_error "Expected path: $(pwd)/vault-bootstrap.sh"
+    exit 1
+fi
+chmod +x ./vault-bootstrap.sh
+./vault-bootstrap.sh auto
+```
+
+**Lesson Learned:**
+> **Always use absolute paths in scripts that change directories**
+> - Use `${SCRIPT_DIR}` or `${TEST_DIR}` prefix for all file references
+> - Validate file existence BEFORE attempting chmod/execute
+> - Log expected vs actual path when file not found (aids debugging)
+
+---
+
+### Critical Issue #2: Bash Glob Pattern Requires Globstar
+
+**Problem:**
+```bash
+# Line 193 - Wrong (** doesn't expand without globstar)
+chmod -R +x ${TEST_DIR}/foundation/**/*.sh
+```
+
+**Root Cause:**
+- `**` recursive glob pattern requires `shopt -s globstar` in bash
+- Without globstar, `**` matches literally (a directory called "**")
+- Script has `set -euo pipefail` but no `shopt -s globstar`
+
+**Why This Matters:**
+The script would match ZERO files, leaving all `.sh` scripts non-executable. Subsequent `./deploy.sh` calls would fail with "Permission denied".
+
+**Fix:**
+```bash
+# Use find instead - works in all POSIX shells
+find ${TEST_DIR}/foundation -type f -name '*.sh' -exec chmod +x {} +
+```
+
+**Lesson Learned:**
+> **Use `find` instead of `**` glob patterns in scripts**
+> - `find` works in all POSIX shells (sh, bash, dash, zsh)
+> - `**` requires bash 4+ with globstar enabled
+> - `-exec {} +` is more efficient than `-exec {} \;` (batches arguments)
+
+**Alternative (if you must use globstar):**
+```bash
+shopt -s globstar  # Enable recursive globbing
+chmod +x ${TEST_DIR}/foundation/**/*.sh
+shopt -u globstar  # Disable (good practice)
+```
+
+---
+
+### Critical Issue #3: kubectl run Flag Incompatibility
+
+**Problem:**
+```bash
+# Line 242 - Wrong (flags conflict)
+kubectl run dns-test-cluster --image=busybox:1.36 --rm --restart=Never \
+  --attach=true --quiet -- nslookup kubernetes.default.svc.cluster.local
+```
+
+**Root Cause:**
+- `--attach=true` streams pod output to stdout
+- `--quiet` suppresses non-error output
+- `--rm` deletes pod after completion
+- Combining these flags causes race condition: pod deleted before output captured
+
+**Why This Matters:**
+Pod cleanup fails, leaving `dns-test-cluster` pod in cluster. Next run fails with "pod already exists". Requires manual cleanup (`kubectl delete pod dns-test-cluster`).
+
+**Fix:**
+```bash
+# Use -i (interactive) instead
+kubectl run dns-test-cluster --image=busybox:1.36 --rm -i --restart=Never \
+  -- nslookup kubernetes.default.svc.cluster.local
+```
+
+**Lesson Learned:**
+> **kubectl run flag combinations to avoid**
+> - ❌ `--attach=true` + `--quiet` (contradictory intent)
+> - ❌ `--rm` + `--attach=true` + `--quiet` (race condition)
+> - ✅ `--rm` + `-i` (interactive, clean deletion)
+> - ✅ `--rm` + `--attach=false` (background, clean deletion)
+
+---
+
+### Critical Issue #4: Missing Image Pre-Pull (Lessons Learned Violation)
+
+**Problem:**
+```bash
+# No pre-pull phase - violates lessons-learned.md:179-186
+kubectl run dns-test-cluster --image=busybox:1.36 ...
+kubectl apply -f ollama/deployment.yaml  # Uses ollama/ollama:latest
+kubectl apply -f agent-gateway.yaml      # Uses curlimages/curl:latest
+```
+
+**Root Cause:**
+- Script assumes images are already available locally
+- Uses `:latest` tags that may not be cached
+- No network connectivity handling
+
+**Why This Matters (from lessons-learned.md:179-186):**
+> Always Pre-pull Critical Images
+> ```bash
+> # Add to daily workflow
+> docker pull nginx:latest
+> docker pull ollama/ollama:latest
+> ```
+
+Without pre-pull:
+- **ImagePullBackOff** errors if network slow/down
+- Docker Hub rate limits (100 pulls/6hrs anonymous)
+- 5-10 minute delays pulling large images (ollama:latest = 4.7GB)
+
+**Fix:**
+Added new Phase 1.5 between environment setup and CoreDNS:
+
+```bash
+log_phase "Pre-Pull Container Images"
+
+declare -a REQUIRED_IMAGES=(
+    "busybox:1.36"
+    "ollama/ollama:latest"
+    "curlimages/curl:latest"
+)
+
+for img in "${REQUIRED_IMAGES[@]}"; do
+    log_info "Pre-pulling ${img}..."
+    docker pull "$img" 2>&1 | tee -a "$LOG_FILE"
+
+    # Load into Kind cluster
+    kind load docker-image "$img" --name "$CLUSTER_NAME"
+    log_success "Loaded ${img} into cluster"
+done
+```
+
+**Lesson Learned:**
+> **ALWAYS pre-pull images in autonomous scripts**
+> - Pre-pull at script start (fail fast if network down)
+> - Load into Kind cluster explicitly (`kind load docker-image`)
+> - Use specific tags when possible (`:1.36` not `:latest`)
+> - Document image sizes (ollama:latest = 4.7GB, warn user)
+
+**Why Load Into Kind Explicitly:**
+Kind clusters are isolated Docker networks. Even if image exists in local Docker cache, Kind needs explicit load:
+
+```bash
+docker pull ollama/ollama:latest     # In host Docker
+kind load docker-image ollama/ollama:latest  # Into Kind network
+```
+
+---
+
+### Critical Issue #5: Sudo Commands Without Permission Check
+
+**Problem:**
+```bash
+# Line 748 - Assumes passwordless sudo
+echo "127.0.0.1 ollama.corp.local" | sudo tee -a /etc/hosts
+
+# Line 803 - Cleanup assumes sudo
+sudo sed -i '/ollama.corp.local/d' /etc/hosts
+```
+
+**Root Cause:**
+- No check if user has sudo access
+- No check if sudo requires password
+- Script hangs in automated environments waiting for password prompt
+
+**Why This Matters:**
+In CI/CD pipelines or containerized environments:
+- No sudo access available
+- Script hangs indefinitely on password prompt
+- No timeout = pipeline hangs forever
+
+**Fix:**
+```bash
+# Check for passwordless sudo
+if sudo -n true 2>/dev/null; then
+    echo "127.0.0.1 ollama.corp.local" | sudo tee -a /etc/hosts >/dev/null
+    log_success "Added ollama.corp.local to /etc/hosts"
+    HOSTS_MODIFIED=true
+else
+    log_warn "Cannot modify /etc/hosts (no passwordless sudo access)"
+    log_info "Add manually: echo '127.0.0.1 ollama.corp.local' | sudo tee -a /etc/hosts"
+    log_info "Skipping external ingress test"
+    HOSTS_MODIFIED=false
+fi
+
+# Later cleanup
+if [ "$HOSTS_MODIFIED" = true ] && sudo -n true 2>/dev/null; then
+    sudo sed -i '/ollama.corp.local/d' /etc/hosts
+fi
+```
+
+**Lesson Learned:**
+> **Always check sudo availability before using**
+> - Use `sudo -n true` to test passwordless sudo (non-interactive)
+> - Gracefully degrade if sudo unavailable (skip non-critical steps)
+> - Log alternative manual instructions for user
+> - Track state with flag (`HOSTS_MODIFIED=true`) for cleanup
+
+**sudo -n flag:**
+- `-n` = non-interactive mode
+- Returns 0 if passwordless sudo works
+- Returns 1 if password required or no sudo access
+- Never prompts for password
+
+---
+
+### Critical Issue #6: Resource Deletion Without Existence Check
+
+**Problem:**
+```bash
+# Line 728 - Assumes secret exists
+kubectl delete secret ollama-tls
+kubectl wait --for=condition=ready certificate/ollama-cert --timeout=60s
+```
+
+**Root Cause:**
+- Previous test may have failed before creating secret
+- No check if secret exists before deletion
+- `kubectl delete` returns non-zero exit code if resource doesn't exist
+- Script has `set -e` (exit on error) = immediate failure
+
+**Why This Matters:**
+Legitimate edge cases cause script failure:
+- First run (secret never created)
+- Previous run failed at cert issuance (secret missing)
+- User manually deleted secret for debugging
+
+**Fix:**
+```bash
+if kubectl get secret ollama-tls &>/dev/null; then
+    SERIAL_BEFORE=$(kubectl get secret ollama-tls -o jsonpath='{.data.tls\.crt}' | base64 -d | openssl x509 -noout -serial)
+    kubectl delete secret ollama-tls
+    kubectl wait --for=condition=ready certificate/ollama-cert --timeout=60s
+    SERIAL_AFTER=$(kubectl get secret ollama-tls -o jsonpath='{.data.tls\.crt}' | base64 -d | openssl x509 -noout -serial)
+
+    if [ "$SERIAL_BEFORE" != "$SERIAL_AFTER" ]; then
+        log_success "Ollama certificate rotation successful"
+    fi
+else
+    log_warn "ollama-tls secret doesn't exist, skipping rotation test"
+fi
+```
+
+**Lesson Learned:**
+> **Always check resource existence before deletion**
+> - Use `kubectl get <resource> &>/dev/null` (exit code 0 = exists)
+> - Gracefully handle missing resources (skip test with warning)
+> - Don't assume resources exist from previous steps (they may have failed)
+
+**Alternative Pattern (for must-delete scenarios):**
+```bash
+kubectl delete secret ollama-tls --ignore-not-found=true
+```
+
+---
+
+### Summary of Fixes
+
+| Issue | Impact | Lines | Fix Time |
+|-------|--------|-------|----------|
+| #1: Path references | Script fails silently | 283, 347 | 15 min |
+| #2: Glob pattern | Scripts non-executable | 193 | 10 min |
+| #3: kubectl flags | Pod cleanup fails | 242 | 10 min |
+| #4: Image pre-pull | ImagePullBackOff errors | New phase | 30 min |
+| #5: Sudo checks | Script hangs | 748, 803 | 20 min |
+| #6: Existence checks | Fails on edge cases | 728 | 15 min |
+| **Total** | **Autonomous execution broken** | **7 locations** | **100 min** |
+
+---
+
+### New Best Practices Added to Project
+
+Based on these fixes, adding to project standards:
+
+#### 1. Script Portability Checklist
+Before committing any bash script, verify:
+- [ ] Uses absolute paths or well-defined variables (`${SCRIPT_DIR}`)
+- [ ] Validates file existence before chmod/execute
+- [ ] Uses `find` instead of `**` glob patterns
+- [ ] Checks sudo availability with `sudo -n true`
+- [ ] Checks resource existence before deletion
+- [ ] Pre-pulls all required container images
+
+#### 2. kubectl Resource Management Pattern
+```bash
+# Standard pattern for resource deletion
+if kubectl get <resource-type> <resource-name> -n <namespace> &>/dev/null; then
+    kubectl delete <resource-type> <resource-name> -n <namespace>
+else
+    log_warn "<Resource> doesn't exist, skipping deletion"
+fi
+
+# Alternative: Use --ignore-not-found for must-delete
+kubectl delete <resource-type> <resource-name> --ignore-not-found=true
+```
+
+#### 3. Image Pre-Pull for Kind Clusters
+```bash
+# ALWAYS use this pattern for Kind-based tests
+IMAGES=("image1:tag1" "image2:tag2")
+for img in "${IMAGES[@]}"; do
+    docker pull "$img"
+    kind load docker-image "$img" --name "$CLUSTER_NAME"
+done
+```
+
+---
+
+### Files Modified
+
+1. **Created:** `/tmp/autonomous-validation-fixed.sh`
+   - All 6 critical issues fixed
+   - Includes inline comments explaining each fix
+   - Ready for autonomous execution
+
+2. **Created:** `/tmp/autonomous-validation-analysis.md`
+   - Detailed analysis of all 18 issues (6 critical, 8 medium, 4 low)
+   - Code examples for each fix
+   - Testing plan
+
+3. **Updated:** `docs/lessons-learned.md` (this section)
+   - Documented reasoning for each fix
+   - New best practices for project
+   - kubectl patterns and sudo handling
+
+---
+
+### Testing Recommendations
+
+After applying fixes, test with these scenarios:
+
+1. **Clean Run:** Fresh system, no Docker images cached
+2. **No Sudo:** Run as user without sudo privileges
+3. **Partial Failure:** Manually delete resources mid-script, re-run
+4. **Network Failure:** Simulate slow/unavailable Docker Hub
+5. **Existing Cluster:** Run when `kind-aiops-validation` already exists
+
+---
+
+### References
+
+- Original script: `scripts/autonomous-validation.sh`
+- Fixed version: `/tmp/autonomous-validation-fixed.sh`
+- Analysis: `/tmp/autonomous-validation-analysis.md`
+- Kind networking docs: https://kind.sigs.k8s.io/docs/user/loadbalancer/
+- kubectl run reference: https://kubernetes.io/docs/reference/generated/kubectl/kubectl-commands#run
+

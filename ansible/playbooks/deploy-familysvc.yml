@@ -1,0 +1,18 @@
+---
+- name: Configure Common Base System
+  hosts: k3s_cluster
+  become: true
+  roles:
+    - common
+
+- name: Initialize K3s Cluster (Node 1)
+  hosts: server
+  become: true
+  roles:
+    - k3s_initial
+
+- name: Join K3s Nodes (App & Gov Layers)
+  hosts: agents
+  become: true
+  roles:
+    - k3s_join

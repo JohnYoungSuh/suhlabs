@@ -3,30 +3,6 @@
     {
       "path": ".",
       "name": "suhlabs"
-    },
-    {
-      "path": "ansible",
-      "name": "ansible"
-    },
-    {
-      "path": "bootstrap",
-      "name": "bootstrap"
-    },
-    {
-      "path": "cluster",
-      "name": "cluster"
-    },
-    {
-      "path": "docs",
-      "name": "docs"
-    },
-    {
-      "path": "infra",
-      "name": "infra"
-    },
-    {
-      "path": "services",
-      "name": "services"
     }
   ],
   "settings": {

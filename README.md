@@ -142,6 +142,212 @@ kubectl apply -f test-certificate.yaml
 ./verify-cert-manager.sh
 ```
 
+## 🔄 Daily Startup SOP (Standard Operating Procedure)
+
+**⚠️ FOR DEVELOPMENT/POC ENVIRONMENT ONLY** - Production uses auto-unseal with YubiHSM
+
+**Why this SOP exists:**
+- **Development**: You turn off Docker Desktop / restart your machine → Kind cluster stops → Vault seals
+- **Production**: Kubernetes cluster runs 24/7 → Vault auto-unseals with YubiHSM → No manual intervention
+
+**Use this when you start your workday or after restarting your machine.**
+
+### Step 1: Start Docker Desktop
+```bash
+# Windows/Mac: Open Docker Desktop application
+# Verify Docker is running:
+docker ps
+```
+
+### Step 2: Verify Kind Cluster is Running
+```bash
+# Check if cluster is running:
+kubectl cluster-info
+
+# If cluster is down, start it:
+make kind-up
+```
+
+### Step 3: Unseal Vault
+**⚠️ CRITICAL:** Vault seals itself when the pod restarts. You must unseal it after every restart.
+
+```bash
+cd cluster/foundation/vault
+
+# Option 1: Interactive menu (recommended)
+./vault-bootstrap.sh
+
+# Option 2: Direct unseal command
+./vault-bootstrap.sh unseal
+
+# Option 3: Check status first
+./vault-bootstrap.sh status
+```
+
+**What happens during unseal:**
+- Script reads unseal keys from `.vault-keys-NEW.json`
+- Applies 3 unseal keys (threshold: 3 of 5)
+- Vault transitions from Sealed → Unsealed
+- Pod becomes Ready (1/1)
+
+### Step 4: Verify Infrastructure
+```bash
+# Check all pods are running:
+kubectl get pods -A
+
+# Check Vault is unsealed:
+kubectl exec -n vault vault-0 -- vault status
+
+# Check cert-manager ClusterIssuers are Ready:
+kubectl get clusterissuer
+
+# Quick health check:
+cd cluster/foundation
+./verify-all.sh
+```
+
+### 🌟 **World's Best: One-Command Environment Switch**
+
+**The elite way to switch contexts + namespaces + auto-fix issues:**
+
+```bash
+# Switch to POC + vault namespace + auto-unseal Vault (daily workflow!)
+kswitch poc vault -u
+
+# Or use shortcuts
+kpoc-vault       # Switch to POC/vault + unseal
+kenv             # Show current context/namespace
+kns vault        # Quick namespace switch (kubens)
+kubectx          # Quick context switch
+```
+
+**What `kswitch` does for you:**
+- ✅ Switches K8s context + namespace
+- ✅ Verifies cluster health (nodes, pods, Vault, cert-manager)
+- ✅ Auto-unseals Vault if sealed (`-u` flag)
+- ✅ Shows environment dashboard
+- ✅ Updates terminal title
+- ✅ Production safety (requires confirmation)
+
+**See all options:** `kswitch --help`
+
+---
+
+### Step 5: Start Development Services (Optional)
+```bash
+# Start Ollama, Qdrant, MinIO:
+make dev-up
+
+# Port-forward AI Ops Agent (if needed):
+kubectl port-forward -n default svc/ai-ops-agent 8000:8000
+```
+
+---
+
+### Common Daily Scenarios
+
+**Scenario 1: "Vault pod is 0/1 Ready"**
+```bash
+# Solution: Unseal Vault
+cd cluster/foundation/vault
+./vault-bootstrap.sh unseal
+```
+
+**Scenario 2: "ClusterIssuers show False"**
+```bash
+# Solution: Restart cert-manager pods (they reconnect to Vault)
+kubectl rollout restart deployment -n cert-manager cert-manager
+```
+
+**Scenario 3: "I need to completely reset Vault"**
+```bash
+# ⚠️ DESTRUCTIVE: Deletes all Vault data
+cd cluster/foundation/vault
+kubectl delete statefulset vault -n vault
+kubectl delete pvc data-vault-0 -n vault
+./deploy.sh
+./vault-bootstrap.sh auto  # Initialize and unseal
+
+# Then reinitialize PKI:
+cd ../vault-pki
+export VAULT_TOKEN=<new-root-token>
+./init-vault-pki.sh
+```
+
+**Scenario 4: "I want to stop everything"**
+```bash
+# Seal Vault (secure shutdown):
+cd cluster/foundation/vault
+./vault-bootstrap.sh seal
+
+# Stop dev services:
+make dev-down
+
+# Stop Kind cluster (keeps data):
+make kind-down
+
+# Or completely destroy cluster (loses ALL data):
+kind delete cluster --name aiops-dev
+```
+
+---
+
+### Vault Bootstrap Commands Reference
+
+```bash
+cd cluster/foundation/vault
+
+# Interactive menu (best for learning):
+./vault-bootstrap.sh
+
+# Direct commands:
+./vault-bootstrap.sh init      # Initialize Vault (first time only)
+./vault-bootstrap.sh unseal    # Unseal Vault (daily startup)
+./vault-bootstrap.sh seal      # Seal Vault (secure shutdown)
+./vault-bootstrap.sh status    # Show Vault status
+./vault-bootstrap.sh token     # Show root token
+./vault-bootstrap.sh auto      # Initialize AND unseal (first time)
+```
+
+---
+
+### Quick Reference: When to Unseal?
+
+| Event | Vault Status | Action Needed |
+|-------|-------------|---------------|
+| Docker Desktop restart | Sealed | ✅ Unseal |
+| Kind cluster restart | Sealed | ✅ Unseal |
+| Vault pod restart | Sealed | ✅ Unseal |
+| Machine reboot | Sealed | ✅ Unseal |
+| Normal development | Unsealed | ❌ No action |
+
+**Key Insight:** Vault seals automatically on every pod restart for security. This is by design and expected behavior.
+
+---
+
+### 🏭 Production Differences
+
+**In production, this daily unseal workflow does NOT exist because:**
+
+| Aspect | Development (This SOP) | Production |
+|--------|----------------------|------------|
+| **Cluster** | Kind (local Docker) - stops when you shut down | Kubernetes cluster runs 24/7 (HA) |
+| **Vault Unsealing** | Manual with `vault-bootstrap.sh` | Auto-unseal with YubiHSM hardware |
+| **Pod Restarts** | Must manually unseal | Auto-unseals immediately |
+| **Downtime** | Acceptable (dev/learning) | Zero-downtime with HA setup |
+| **HSM** | SoftHSM (software emulation) | YubiHSM 2 (hardware security) |
+
+**Production setup would have:**
+- ✅ Vault configured with auto-unseal (YubiHSM or CloudHSM)
+- ✅ Multiple Vault replicas (HA mode)
+- ✅ Cluster runs continuously on bare metal / VMs / cloud
+- ✅ Vault unseals automatically when pods restart
+- ✅ No manual intervention needed
+
+**This daily unseal is a development workflow only.** You're learning the mechanics now; production automates it.
+
+---
+
 ## 🛠️ Tech Stack
 
 ### Infrastructure
@@ -228,7 +434,7 @@ suhlabs/
 
 | Day | Focus | Status | Key Deliverables |
 |-----|-------|--------|------------------|
-| 8 | Zero-Trust Networking | 📅 | mTLS, network policies |
+| 8 | Zero-Trust Networking | 🚧 | mTLS, network policies (Linkerd) |
 | 9 | Ollama + LLM | 📅 | Self-hosted LLM, API integration |
 | 10 | RAG Pipeline | 📅 | Vector DB, embeddings, retrieval |
 | 11 | SBOM + Supply Chain | 📅 | Signed artifacts, vulnerability scanning |

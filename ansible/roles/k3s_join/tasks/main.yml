@@ -1,0 +1,18 @@
+---
+- name: Check if K3s is already installed
+  stat:
+    path: /usr/local/bin/k3s
+  register: k3s_agent_check
+
+- name: Install K3s (Join Cluster)
+  shell: |
+    curl -sfL https://get.k3s.io | sh -s - server \
+      --server="https://{{ hostvars['node1']['ansible_host'] }}:6443" \
+      --token="{{ hostvars['node1']['k3s_token'] }}" \
+      --disable traefik \
+      --disable servicelb \
+      --write-kubeconfig-mode=644 \
+      --node-name={{ inventory_hostname }}
+  when: not k3s_agent_check.stat.exists
+  environment:
+    INSTALL_K3S_VERSION: "v1.28.5+k3s1"

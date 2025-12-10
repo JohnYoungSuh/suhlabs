@@ -92,6 +92,35 @@ server:
     create: true
     name: vault
 
+  # Auto-unseal sidecar configuration (disabled - use manual auto-unseal.sh script)
+  # extraVolumes:
+  #   - type: configMap
+  #     name: vault-auto-unseal-script
+  #   - type: secret
+  #     name: vault-unseal-keys
+
+  # extraContainers:
+  #   - name: auto-unseal
+  #     image: hashicorp/vault:1.20.4
+  #     command: ["/bin/sh", "/scripts/auto-unseal.sh"]
+  #     env:
+  #       - name: VAULT_ADDR
+  #         value: "http://localhost:8200"
+  #       - name: AI_AGENT_URL
+  #         value: "http://ai-ops-agent.default.svc.cluster.local:8000"
+  #     volumeMounts:
+  #       - name: vault-auto-unseal-script
+  #         mountPath: /scripts
+  #       - name: vault-unseal-keys
+  #         mountPath: /etc/vault/unseal-keys
+  #     resources:
+  #       requests:
+  #         cpu: 10m
+  #         memory: 32Mi
+  #       limits:
+  #         cpu: 50m
+  #         memory: 64Mi
+
 # UI configuration
 ui:
   enabled: true

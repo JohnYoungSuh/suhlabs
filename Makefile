@@ -66,12 +66,15 @@ help:
 	@echo "  dev-down         Stop and clean local stack"
 	@echo "  kind-up          Create kind cluster (aiops-dev)"
 	@echo "  kind-down        Delete kind cluster"
-	@echo "  apply-local      Apply Terraform (local kind)"
-	@echo "  test-ai          Test AI agent with NL request"
+	@echo "  init             Initialize Terraform (ENV=local by default)"
+	@echo "  plan             Plan Terraform deployment"
+	@echo "  apply            Apply Terraform deployment"
+	@echo "  test             Run tests (ENV=local by default)"
 	@echo ""
 	@echo "${GREEN}Production (Proxmox):${RESET}"
-	@echo "  init-prod        Initialize Terraform with Proxmox backend"
-	@echo "  apply-prod       Apply Terraform to Proxmox"
+	@echo "  init ENV=prod    Initialize Terraform with Proxmox backend"
+	@echo "  apply ENV=prod   Apply Terraform to Proxmox"
+	@echo "  test ENV=prod    Run production tests"
 	@echo "  migrate-state    Migrate state from local → prod"
 	@echo ""
 	@echo "${GREEN}Day 3: Terraform Practice:${RESET}"
@@ -128,35 +131,35 @@ kind-export:
 # -----------------------------------------------------------------------------
 # Terraform: Dual Backend Support
 # -----------------------------------------------------------------------------
-init: init-$(ENV)
-
-init-local:
-	@echo "${GREEN}Initializing Terraform (local backend)${RESET}"
-	cd infra/local && $(TERRAFORM) init -backend-config="../$(TF_BACKEND_LOCAL)"
-
-init-prod:
+# Terraform init
+init:
+ifeq ($(ENV),prod)
 	@echo "${GREEN}Initializing Terraform (Proxmox backend)${RESET}"
 	cd infra/proxmox && $(TERRAFORM) init -backend-config="../$(TF_BACKEND_PROD)"
+else
+	@echo "${GREEN}Initializing Terraform (local backend)${RESET}"
+	cd infra/local && $(TERRAFORM) init -backend-config="../$(TF_BACKEND_LOCAL)"
+endif
 
-plan: plan-$(ENV)
-
-plan-local:
-	@echo "${GREEN}Planning local infrastructure...${RESET}"
-	cd infra/local && $(TERRAFORM) plan -out=plan.tfplan
-
-plan-prod:
+# Terraform plan
+plan:
+ifeq ($(ENV),prod)
 	@echo "${GREEN}Planning Proxmox infrastructure...${RESET}"
 	cd infra/proxmox && $(TERRAFORM) plan -out=plan.tfplan
+else
+	@echo "${GREEN}Planning local infrastructure...${RESET}"
+	cd infra/local && $(TERRAFORM) plan -out=plan.tfplan
+endif
 
-apply: apply-$(ENV)
-
-apply-local: init-local plan-local
-	@echo "${GREEN}Applying local infrastructure...${RESET}"
-	cd infra/local && $(TERRAFORM) apply -auto-approve plan.tfplan
-
-apply-prod: init-prod plan-prod
+# Terraform apply
+apply: init plan
+ifeq ($(ENV),prod)
 	@echo "${GREEN}Applying to Proxmox...${RESET}"
 	cd infra/proxmox && $(TERRAFORM) apply -auto-approve plan.tfplan
+else
+	@echo "${GREEN}Applying local infrastructure...${RESET}"
+	cd infra/local && $(TERRAFORM) apply -auto-approve plan.tfplan
+endif
 
 migrate-state:
 	@echo "${YELLOW}Migrating Terraform state: local → prod${RESET}"
@@ -206,47 +209,46 @@ tf-practice:
 # -----------------------------------------------------------------------------
 # Testing
 # -----------------------------------------------------------------------------
-test: test-$(ENV)
-
-test-local: apply-local
-	@echo "${GREEN}Running local tests...${RESET}"
-	$(MAKE) test-infra-local
-	$(MAKE) test-services-local
-	$(MAKE) test-ai
-
-test-prod: apply-prod
+# Testing
+test: apply
+ifeq ($(ENV),prod)
 	@echo "${GREEN}Running prod tests...${RESET}"
-	$(MAKE) test-infra-prod
-	$(MAKE) test-services-prod
-	$(MAKE) test-ai-prod
+	$(MAKE) test-infra test-services test-ai ENV=$(ENV)
+else
+	@echo "${GREEN}Running local tests...${RESET}"
+	$(MAKE) test-infra test-services test-ai ENV=$(ENV)
+endif
 
-test-infra-local:
-	@echo "Pinging control plane..."
-	$(KUBECTL) get nodes
-
-test-infra-prod:
+test-infra:
+ifeq ($(ENV),prod)
 	@echo "Validating Proxmox VMs..."
 	# Assumes SSH access via ansible
 	$(ANSIBLE) -i inventory/proxmox.yml all -m ping
+else
+	@echo "Pinging control plane..."
+	$(KUBECTL) get nodes
+endif
 
-test-services-local:
+test-services:
+ifeq ($(ENV),prod)
+	$(ANSIBLE) -i inventory/proxmox.yml dns -m command -a "dig @10.0.1.5 corp.example.com"
+else
 	@echo "Testing DNS, Samba, IPA locally..."
 	$(KUBECTL) exec -n ai-ops deploy/dns -- dig +short google.com
-
-test-services-prod:
-	$(ANSIBLE) -i inventory/proxmox.yml dns -m command -a "dig @10.0.1.5 corp.example.com"
+endif
 
 test-ai:
-	@echo "${GREEN}Testing AI Ops Agent (NL → Intent)...${RESET}"
-	curl -s -X POST http://localhost:30080/api/v1/chat \
-	  -H "Content-Type: application/json" \
-	  -d '{"query": "Add DNS A record for test.local to 192.168.1.100", "user_id": "test-user", "user_email": "test@example.com"}' | jq
-
-test-ai-prod:
+ifeq ($(ENV),prod)
 	@echo "${GREEN}Testing AI agent in prod...${RESET}"
 	curl -sk -X POST https://ai-ops.corp.example.com/api/v1/intent \
 	  -H "Authorization: Bearer $(VAULT_TOKEN)" \
 	  -d '{"nl": "Add DNS A record for prod.local to 10.0.10.100"}'
+else
+	@echo "${GREEN}Testing AI Ops Agent (NL → Intent)...${RESET}"
+	curl -s -X POST http://localhost:30080/api/v1/chat \
+	  -H "Content-Type: application/json" \
+	  -d '{"query": "Add DNS A record for test.local to 192.168.1.100", "user_id": "test-user", "user_email": "test@example.com"}' | jq
+endif
 
 # -----------------------------------------------------------------------------
 # Linting & Validation
@@ -292,6 +294,22 @@ clean:
 	rm -f sbom.*
 	find . -name "*.sig" -delete
 	$(MAKE) dev-down
+
+# -----------------------------------------------------------------------------
+# Factory Provisioning
+# -----------------------------------------------------------------------------
+factory-install:
+	@echo "${GREEN}Starting Factory Install (Zero-Touch)...${RESET}"
+	@chmod +x provisioning/*.sh
+	./provisioning/factory-install.sh
+
+factory-reset:
+	@echo "${RED}Factory Reset: Wiping environment...${RESET}"
+	$(MAKE) kind-down
+	rm -rf .terraform* *.tfplan *.tfstate *.tfstate.backup
+	rm -f sbom.*
+	find . -name "*.sig" -delete
+	@echo "${GREEN}Reset complete.${RESET}"
 
 # -----------------------------------------------------------------------------
 # Reusable Secret Validation Functions

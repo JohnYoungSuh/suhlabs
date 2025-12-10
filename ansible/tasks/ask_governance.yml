@@ -1,0 +1,36 @@
+---
+# tasks/ask_governance.yml
+# Universal "Permission-First" Governance Check
+#
+# Constraints:
+# - Must block execution if Governance Service returns anything other than 200 OK.
+# - Securely registers the response (no_log: true).
+#
+# Inputs:
+#   action_type      (Required) e.g., 'deployment', 'remediation', 'maintenance'
+#   target_asset     (Required) e.g., 'production-cluster', 'database-01'
+#   security_context (Required) e.g., CVE score, git commit hash, or 'none'
+#
+# Globals:
+#   governance_url   (Required) Base URL of the Governance Service
+
+- name: "GOVERNANCE: Request Authorization (The Handshake)"
+  ansible.builtin.uri:
+    url: "{{ governance_url }}/api/v1/authorize"
+    method: POST
+    body_format: json
+    body:
+      agent_id: "{{ inventory_hostname }}"
+      action_type: "{{ action_type }}"
+      risk_data: "{{ security_context }}"
+    return_content: true
+    status_code: 200
+  register: auth_response
+  # Critical security: Do not log the raw token or internal reasoning to stdout
+  no_log: true
+  failed_when: false
+
+- name: "GOVERNANCE: Enforce Policy Gate (The Gatekeeper)"
+  ansible.builtin.fail:
+    msg: "GOVERNANCE BLOCK: {{ action_type }} denied. Policy Reason: {{ auth_response.json.reason | default('Unknown') }}"
+  when: auth_response.status != 200

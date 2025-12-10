@@ -1,0 +1,67 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: vault-auto-unseal-script
+  namespace: vault
+data:
+  auto-unseal.sh: |
+    #!/bin/sh
+    # Use sh instead of bash for broader compatibility
+    
+    VAULT_ADDR="http://localhost:8200"
+    KEYS_DIR="/etc/vault/unseal-keys"
+    CHECK_INTERVAL=10
+    
+    echo "Vault Auto-Unseal Sidecar Started"
+    echo "Watching Vault at: $VAULT_ADDR"
+    
+    while true; do
+      # Check if Vault is sealed
+      # Exit code 2 means sealed, 0 means unsealed
+      vault status > /dev/null 2>&1
+      STATUS=$?
+      
+      if [ "$STATUS" -eq 2 ]; then
+        echo "Vault is sealed. Attempting auto-unseal..."
+        
+        # Unseal with first 3 keys
+        for i in 0 1 2; do
+          if [ -f "$KEYS_DIR/unseal_key_$i" ]; then
+            KEY=$(cat "$KEYS_DIR/unseal_key_$i")
+            vault operator unseal "$KEY" > /dev/null 2>&1
+          else
+            echo "Warning: Unseal key $i not found at $KEYS_DIR/unseal_key_$i"
+          fi
+        done
+        
+        # Check if unseal succeeded
+        vault status > /dev/null 2>&1
+        NEW_STATUS=$?
+        
+        if [ "$NEW_STATUS" -eq 0 ]; then
+          echo "✅ Vault unsealed successfully at $(date)"
+          
+          # Optional: Report to AI agent (using curl if available)
+          if command -v curl >/dev/null 2>&1 && [ -n "${AI_AGENT_URL:-}" ]; then
+            curl -s -X POST "$AI_AGENT_URL/api/v1/provisioning/progress" \
+              -H "Content-Type: application/json" \
+              -d "{
+                \"session_id\": \"auto-unseal\",
+                \"task_id\": \"vault-unseal\",
+                \"component\": \"vault\",
+                \"status\": \"completed\",
+                \"progress_percent\": 100,
+                \"message\": \"Vault auto-unsealed successfully\"
+              }" || true
+          fi
+        else
+          echo "❌ Vault unseal failed"
+        fi
+      elif [ "$STATUS" -eq 0 ]; then
+        echo "Vault is unsealed (checked at $(date))"
+      else
+        echo "Vault status check failed (exit code $STATUS). Is Vault running?"
+      fi
+      
+      sleep $CHECK_INTERVAL
+    done

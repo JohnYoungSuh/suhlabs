@@ -1,0 +1,52 @@
+---
+# playbooks/demo_governance.yml
+# Demonstration of "Permission-First" Governance Integration
+
+- name: "Scenario A: Developer Deployment (DEV)"
+  hosts: localhost
+  connection: local
+  vars:
+    governance_url: "http://localhost:8080"
+    git_commit_hash: "a1b2c3d4"
+  tasks:
+    - name: "Ask for Permission to Deploy"
+      ansible.builtin.include_tasks: ../tasks/ask_governance.yml
+      vars:
+        action_type: "deployment"
+        target_asset: "production-cluster"
+        security_context: "{{ git_commit_hash }}"
+
+    - name: "Proceed with Deployment"
+      ansible.builtin.debug:
+        msg: "Permission Granted! Deploying application version {{ git_commit_hash }}..."
+
+- name: "Scenario B: Security Auto-Patching (SEC)"
+  hosts: localhost
+  connection: local
+  vars:
+    governance_url: "http://localhost:8080"
+    cve_score: "9.8"
+  tasks:
+    - name: "Ask for Permission to Patch"
+      ansible.builtin.include_tasks: ../tasks/ask_governance.yml
+      vars:
+        action_type: "remediation"
+        target_asset: "database-01"
+        security_context: "{{ cve_score }}"
+
+    - name: "Proceed with Patching"
+      ansible.builtin.debug:
+        msg: "Permission Granted! Applying patches for Critical Vulnerability (Risk: {{ cve_score }})..."
+# - name: "Scenario C: Unauthorized Action (BLOCKED)"
+#   hosts: localhost
+#   connection: local
+#   vars:
+#     governance_url: "http://localhost:8080"
+#     security_context: "HIGH_RISK_ACTION"
+#   tasks:
+#     - name: "Ask for Permission"
+#       ansible.builtin.include_tasks: ../tasks/ask_governance.yml
+#       vars:
+#         action_type: "destructive_wipe"
+#         target_asset: "production-db"
+#         security_context: "{{ security_context }}"

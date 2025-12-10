@@ -1,0 +1,45 @@
+---
+- name: Update apt cache
+  apt:
+    update_cache: yes
+    cache_valid_time: 3600
+
+- name: Install common dependencies
+  apt:
+    name:
+      - curl
+      - wget
+      - git
+      - vim
+      - htop
+      - net-tools
+      - nfs-common
+      - open-iscsi
+    state: present
+
+- name: Disable swap immediately
+  command: swapoff -a
+  changed_when: false
+
+- name: Disable swap in fstab
+  replace:
+    path: /etc/fstab
+    regexp: '^([^#].*?\sswap\s+sw\s+.*)$'
+    replace: '# \1'
+
+- name: Configure K3s kernel parameters
+  copy:
+    dest: /etc/sysctl.d/99-k3s.conf
+    content: |
+      net.bridge.bridge-nf-call-iptables  = 1
+      net.bridge.bridge-nf-call-ip6tables = 1
+      net.ipv4.ip_forward                 = 1
+  register: sysctl_k3s
+
+- name: Apply sysctl params
+  command: sysctl --system
+  when: sysctl_k3s.changed
+
+- name: Set timezone
+  timezone:
+    name: America/New_York

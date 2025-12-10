@@ -18,10 +18,19 @@ fi
 
 echo "Creating Kubernetes secret from $KEYS_FILE..."
 
-# Create secret from the keys file
+# Parse keys using jq
+KEY_0=$(jq -r '.unseal_keys_b64[0]' "$KEYS_FILE")
+KEY_1=$(jq -r '.unseal_keys_b64[1]' "$KEYS_FILE")
+KEY_2=$(jq -r '.unseal_keys_b64[2]' "$KEYS_FILE")
+ROOT_TOKEN=$(jq -r '.root_token' "$KEYS_FILE")
+
+# Create secret with individual keys
 kubectl create secret generic "$SECRET_NAME" \
     -n "$NAMESPACE" \
-    --from-file=keys="$KEYS_FILE" \
+    --from-literal=unseal_key_0="$KEY_0" \
+    --from-literal=unseal_key_1="$KEY_1" \
+    --from-literal=unseal_key_2="$KEY_2" \
+    --from-literal=root_token="$ROOT_TOKEN" \
     --dry-run=client -o yaml | kubectl apply -f -
 
 echo "✓ Unseal keys saved to Kubernetes secret: $NAMESPACE/$SECRET_NAME"

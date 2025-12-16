@@ -539,6 +539,22 @@ Comprehensive documentation for each component:
 - **[14-Day Sprint Plan](docs/14-DAY-SPRINT.md)** - Complete roadmap
 - **[Ansible README](ansible/README.md)** - Automation guide (70+ sections)
 
+### Family Privacy Hub
+
+Privacy-first home automation platform - a complete pivot from cloud subscriptions to local ownership:
+
+- **[System Design](docs/FAMILY-SERVICES-SYSTEM-DESIGN.md)** - Complete system architecture, hardware tiers, service stack (Home Assistant + Jellyfin + Frigate NVR)
+- **[Research & Analysis](docs/FAMILY-SERVICES-RESEARCH-ANALYSIS.md)** - Market validation ($64B market, 422M users), YouTube evidence, competitive analysis
+- **[Business Model](docs/FAMILY-SERVICES-BUSINESS-MODEL.md)** - Pricing strategy ($499-$1,899), ROI model (13-month payback), scaling to $20M
+- **[Documentation Governance](docs/DOCUMENTATION-GOVERNANCE.md)** - Update workflows and maintenance patterns
+
+**Key Insights:**
+
+- 🎯 **Market pivot:** ARM/PhotoPrism → x86/Smart Home (40x larger addressable market)
+- 💰 **ROI:** $1,299 upfront replaces $1,200/year in subscriptions (9-13 month payback)
+- 🏛️ **Hardware:** Intel x86 required for Jellyfin Quick Sync and Frigate OpenVINO
+- 📊 **Revenue path:** 360 units (Year 1) → 1,200 units (Year 3) → $1.5M revenue
+
 ## 🧪 Testing & Verification
 
 Every component has comprehensive verification:

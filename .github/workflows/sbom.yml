@@ -4,7 +4,7 @@ on:
   push:
     branches: [main, master]
     tags:
-      - 'v*'
+      - "v*"
   pull_request:
     branches: [main, master]
   workflow_dispatch:
@@ -12,8 +12,8 @@ on:
     types: [published]
 
 permissions:
-  contents: write  # For uploading release assets
-  packages: write  # For pushing signed images
+  contents: write # For uploading release assets
+  packages: write # For pushing signed images
 
 env:
   REGISTRY: ghcr.io
@@ -136,7 +136,7 @@ jobs:
     permissions:
       contents: read
       packages: write
-      id-token: write  # For keyless signing
+      id-token: write # For keyless signing
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -154,6 +154,10 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Prepare repository name (lowercase for docker)
+        id: repo
+        run: echo "name=$(echo '${{github.repository }}' | tr '[:upper:]' '[:lower:]')" >> $GITHUB_OUTPUT
+
       - name: Build and push AI Ops Agent
         id: build-push
         uses: docker/build-push-action@v5
@@ -161,8 +165,8 @@ jobs:
           context: cluster/ai-ops-agent
           push: true
           tags: |
-            ${{ env.REGISTRY }}/${{ github.repository }}/ai-ops-agent:${{ github.sha }}
-            ${{ env.REGISTRY }}/${{ github.repository }}/ai-ops-agent:latest
+            ${{ env.REGISTRY }}/${{ steps.repo.outputs.name }}/ai-ops-agent:${{ github.sha }}
+            ${{ env.REGISTRY }}/${{ steps.repo.outputs.name }}/ai-ops-agent:latest
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
@@ -174,7 +178,7 @@ jobs:
       - name: Sign container image (keyless)
         run: |
           cosign sign --yes \
-            ${{ env.REGISTRY }}/${{ github.repository }}/ai-ops-agent:${{ github.sha }}
+            ${{ env.REGISTRY }}/${{ steps.repo.outputs.name }}/ai-ops-agent:${{ github.sha }}
 
       - name: Sign SBOM files
         run: |
@@ -187,7 +191,7 @@ jobs:
       - name: Attach SBOM to image
         run: |
           cosign attach sbom --sbom sbom-cyclonedx.json \
-            ${{ env.REGISTRY }}/${{ github.repository }}/ai-ops-agent:${{ github.sha }}
+            ${{ env.REGISTRY }}/${{ steps.repo.outputs.name }}/ai-ops-agent:${{ github.sha }}
 
       - name: Upload signed SBOMs
         uses: actions/upload-artifact@v4
@@ -225,7 +229,7 @@ jobs:
           cosign verify \
             --certificate-identity-regexp="https://github.com/${{ github.repository }}" \
             --certificate-oidc-issuer=https://token.actions.githubusercontent.com \
-            ${{ env.REGISTRY }}/${{ github.repository }}/ai-ops-agent:${{ github.sha }} || true
+            ${{ env.REGISTRY }}/${{ steps.repo.outputs.name }}/ai-ops-agent:${{ github.sha }} || true
 
       - name: Download signed SBOMs
         uses: actions/download-artifact@v4

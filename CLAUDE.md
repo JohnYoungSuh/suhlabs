@@ -1,10 +1,16 @@
 # CLAUDE.md
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+# ⚠️ GENERATED FILE: DO NOT EDIT DIRECTLY ⚠️
+
+# This file is a mirror of AI_AGENT_RULES.md for Claude Code compatibility.
+
+# Please edit AI_AGENT_RULES.md for any governance or rule changes.
+
+This file provides guidance to **ALL AI Agents** (Claude Code, Cursor, GitHub Copilot, Antigravity, etc.) when working with code in this repository.
 
 ## Governance Compliance
 
-**CRITICAL:** This project follows the **Unified AI Agent Governance Framework v3.0**. All AI agents (including Claude Code instances) operating in this repository MUST comply with the framework's rules.
+**CRITICAL:** This project follows the **Unified AI Agent Governance Framework v3.0**. All AI agents operating in this repository MUST comply with the framework's rules.
 
 **Framework location:** `/home/suhlabs/projects/suhlabs/ai-agent-governance-framework/UNIFIED-AI-AGENT-GOVERNANCE-FRAMEWORK-v3.0.md`
 
@@ -15,7 +21,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - **Destructive operations:** Require explicit confirmation with impact analysis and rollback plan
 - **No assumptions:** When scope or ownership is unclear, ask for clarification
 - **Audit trail:** All significant actions should be documented
-- Fail-safe: Default to deny; escalate with full context when uncertain
+- **Fail-safe:** Default to deny; escalate with full context when uncertain
 
 ### Automated Governance via API
 
@@ -496,7 +502,7 @@ make kind-down
 7. **Read-only root filesystem** - Where possible
 8. **Security scanning** - Trivy scans on every build
 
-## Working with Claude Code (Governance Framework Workflow)
+## Working with AI Agents (Governance Framework Workflow)
 
 ### Standard Operating Procedure
 
@@ -735,7 +741,7 @@ services:
 - Secrets in logs or stdout
 - Secrets in git (even in history)
 
-### Pre-Flight Checklist for Claude Code
+### Pre-Flight Checklist for AI Agents
 
 Before taking any action in this repository:
 

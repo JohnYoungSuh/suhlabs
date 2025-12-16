@@ -22,12 +22,14 @@ Building a self-hosted AI infrastructure platform with enterprise-grade security
 ## 📊 Current Status: Days 1-6 Complete ✅
 
 ### ✅ Day 1-3: Foundation & IaC
+
 - Kubernetes cluster (Kind for local dev)
 - Docker environment setup
 - Infrastructure as Code patterns
 - VS Code workspace configuration
 
 ### ✅ Day 4: Foundation Services
+
 - **CoreDNS**: Custom DNS with corp.local zone
 - **SoftHSM**: Software HSM for Vault auto-unseal
 - **Vault PKI**: Two-tier CA hierarchy (Root + Intermediate)
@@ -37,6 +39,7 @@ Building a self-hosted AI infrastructure platform with enterprise-grade security
 - **Verification**: 33 automated tests
 
 ### ✅ Day 5: Cert-Manager Integration
+
 - **Automated certificate issuance** from Vault PKI
 - **Three ClusterIssuers** for different security zones
 - **Certificate lifecycle management**: 30-day certs, auto-renew at 20 days
@@ -44,6 +47,7 @@ Building a self-hosted AI infrastructure platform with enterprise-grade security
 - **Comprehensive verification**: 9 test suites
 
 ### ✅ Day 6: CI/CD Pipeline (Just Completed!)
+
 - **GitHub Actions CD pipeline**: Automated testing, building, and deployment
 - **Security scanning**: Trivy filesystem and image vulnerability scanning
 - **SBOM generation**: CycloneDX and SPDX formats for supply chain security
@@ -147,12 +151,14 @@ kubectl apply -f test-certificate.yaml
 **⚠️ FOR DEVELOPMENT/POC ENVIRONMENT ONLY** - Production uses auto-unseal with YubiHSM
 
 **Why this SOP exists:**
+
 - **Development**: You turn off Docker Desktop / restart your machine → Kind cluster stops → Vault seals
 - **Production**: Kubernetes cluster runs 24/7 → Vault auto-unseals with YubiHSM → No manual intervention
 
 **Use this when you start your workday or after restarting your machine.**
 
 ### Step 1: Start Docker Desktop
+
 ```bash
 # Windows/Mac: Open Docker Desktop application
 # Verify Docker is running:
@@ -160,6 +166,7 @@ docker ps
 ```
 
 ### Step 2: Verify Kind Cluster is Running
+
 ```bash
 # Check if cluster is running:
 kubectl cluster-info
@@ -169,6 +176,7 @@ make kind-up
 ```
 
 ### Step 3: Unseal Vault
+
 **⚠️ CRITICAL:** Vault seals itself when the pod restarts. You must unseal it after every restart.
 
 ```bash
@@ -185,12 +193,14 @@ cd cluster/foundation/vault
 ```
 
 **What happens during unseal:**
+
 - Script reads unseal keys from `.vault-keys-NEW.json`
 - Applies 3 unseal keys (threshold: 3 of 5)
 - Vault transitions from Sealed → Unsealed
 - Pod becomes Ready (1/1)
 
 ### Step 4: Verify Infrastructure
+
 ```bash
 # Check all pods are running:
 kubectl get pods -A
@@ -222,6 +232,7 @@ kubectx          # Quick context switch
 ```
 
 **What `kswitch` does for you:**
+
 - ✅ Switches K8s context + namespace
 - ✅ Verifies cluster health (nodes, pods, Vault, cert-manager)
 - ✅ Auto-unseals Vault if sealed (`-u` flag)
@@ -234,6 +245,7 @@ kubectx          # Quick context switch
 ---
 
 ### Step 5: Start Development Services (Optional)
+
 ```bash
 # Start Ollama, Qdrant, MinIO:
 make dev-up
@@ -247,6 +259,7 @@ kubectl port-forward -n default svc/ai-ops-agent 8000:8000
 ### Common Daily Scenarios
 
 **Scenario 1: "Vault pod is 0/1 Ready"**
+
 ```bash
 # Solution: Unseal Vault
 cd cluster/foundation/vault
@@ -254,12 +267,14 @@ cd cluster/foundation/vault
 ```
 
 **Scenario 2: "ClusterIssuers show False"**
+
 ```bash
 # Solution: Restart cert-manager pods (they reconnect to Vault)
 kubectl rollout restart deployment -n cert-manager cert-manager
 ```
 
 **Scenario 3: "I need to completely reset Vault"**
+
 ```bash
 # ⚠️ DESTRUCTIVE: Deletes all Vault data
 cd cluster/foundation/vault
@@ -275,6 +290,7 @@ export VAULT_TOKEN=<new-root-token>
 ```
 
 **Scenario 4: "I want to stop everything"**
+
 ```bash
 # Seal Vault (secure shutdown):
 cd cluster/foundation/vault
@@ -313,13 +329,13 @@ cd cluster/foundation/vault
 
 ### Quick Reference: When to Unseal?
 
-| Event | Vault Status | Action Needed |
-|-------|-------------|---------------|
-| Docker Desktop restart | Sealed | ✅ Unseal |
-| Kind cluster restart | Sealed | ✅ Unseal |
-| Vault pod restart | Sealed | ✅ Unseal |
-| Machine reboot | Sealed | ✅ Unseal |
-| Normal development | Unsealed | ❌ No action |
+| Event                  | Vault Status | Action Needed |
+| ---------------------- | ------------ | ------------- |
+| Docker Desktop restart | Sealed       | ✅ Unseal     |
+| Kind cluster restart   | Sealed       | ✅ Unseal     |
+| Vault pod restart      | Sealed       | ✅ Unseal     |
+| Machine reboot         | Sealed       | ✅ Unseal     |
+| Normal development     | Unsealed     | ❌ No action  |
 
 **Key Insight:** Vault seals automatically on every pod restart for security. This is by design and expected behavior.
 
@@ -329,15 +345,16 @@ cd cluster/foundation/vault
 
 **In production, this daily unseal workflow does NOT exist because:**
 
-| Aspect | Development (This SOP) | Production |
-|--------|----------------------|------------|
-| **Cluster** | Kind (local Docker) - stops when you shut down | Kubernetes cluster runs 24/7 (HA) |
-| **Vault Unsealing** | Manual with `vault-bootstrap.sh` | Auto-unseal with YubiHSM hardware |
-| **Pod Restarts** | Must manually unseal | Auto-unseals immediately |
-| **Downtime** | Acceptable (dev/learning) | Zero-downtime with HA setup |
-| **HSM** | SoftHSM (software emulation) | YubiHSM 2 (hardware security) |
+| Aspect              | Development (This SOP)                         | Production                        |
+| ------------------- | ---------------------------------------------- | --------------------------------- |
+| **Cluster**         | Kind (local Docker) - stops when you shut down | Kubernetes cluster runs 24/7 (HA) |
+| **Vault Unsealing** | Manual with `vault-bootstrap.sh`               | Auto-unseal with YubiHSM hardware |
+| **Pod Restarts**    | Must manually unseal                           | Auto-unseals immediately          |
+| **Downtime**        | Acceptable (dev/learning)                      | Zero-downtime with HA setup       |
+| **HSM**             | SoftHSM (software emulation)                   | YubiHSM 2 (hardware security)     |
 
 **Production setup would have:**
+
 - ✅ Vault configured with auto-unseal (YubiHSM or CloudHSM)
 - ✅ Multiple Vault replicas (HA mode)
 - ✅ Cluster runs continuously on bare metal / VMs / cloud
@@ -351,11 +368,13 @@ cd cluster/foundation/vault
 ## 🛠️ Tech Stack
 
 ### Infrastructure
+
 - **Kubernetes**: Kind (local) → K3s (production on Proxmox)
 - **Container Runtime**: Docker
 - **Service Mesh**: (Coming: Istio with mTLS)
 
 ### Security
+
 - **PKI**: HashiCorp Vault with two-tier CA
 - **Certificate Management**: cert-manager (automated)
 - **HSM**: SoftHSM (dev) → YubiHSM 2 (production)
@@ -363,6 +382,7 @@ cd cluster/foundation/vault
 - **Secret Management**: Vault with Kubernetes integration
 
 ### Automation
+
 - **IaC**: Terraform for infrastructure provisioning
 - **Configuration Management**: Ansible for service deployment
 - **CI/CD**: GitHub Actions with automated testing and deployment
@@ -371,12 +391,14 @@ cd cluster/foundation/vault
 - **Verification**: Bash scripts with comprehensive testing
 
 ### AI/ML (Coming)
+
 - **LLM Runtime**: Ollama (self-hosted)
 - **Vector Database**: Qdrant
 - **Embeddings**: sentence-transformers
 - **RAG Pipeline**: Custom implementation
 
 ### Observability (Coming)
+
 - **Metrics**: Prometheus
 - **Visualization**: Grafana
 - **Logging**: Loki + Promtail
@@ -422,29 +444,30 @@ suhlabs/
 
 ### Week 1: Foundation + First Blood ✅
 
-| Day | Focus | Status | Key Deliverables |
-|-----|-------|--------|------------------|
-| 1-3 | Terminal Setup + K8s + IaC | ✅ | Kind cluster, Terraform, Ansible, workspace |
-| 4 | Foundation Services | ✅ | CoreDNS, SoftHSM, Vault PKI (2-tier CA) |
-| 5 | Cert-Manager | ✅ | Automated certificate lifecycle management |
-| 6 | CI/CD Pipeline | ✅ | GitHub Actions, security scanning, SBOM |
-| 7 | Week 1 Integration | ✅ | Full stack deploy end-to-end |
+| Day | Focus                      | Status | Key Deliverables                            |
+| --- | -------------------------- | ------ | ------------------------------------------- |
+| 1-3 | Terminal Setup + K8s + IaC | ✅     | Kind cluster, Terraform, Ansible, workspace |
+| 4   | Foundation Services        | ✅     | CoreDNS, SoftHSM, Vault PKI (2-tier CA)     |
+| 5   | Cert-Manager               | ✅     | Automated certificate lifecycle management  |
+| 6   | CI/CD Pipeline             | ✅     | GitHub Actions, security scanning, SBOM     |
+| 7   | Week 1 Integration         | ✅     | Full stack deploy end-to-end                |
 
 ### Week 2: Advanced Security + LLM Integration 📅
 
-| Day | Focus | Status | Key Deliverables |
-|-----|-------|--------|------------------|
-| 8 | Zero-Trust Networking | 🚧 | mTLS, network policies (Linkerd) |
-| 9 | Ollama + LLM | 📅 | Self-hosted LLM, API integration |
-| 10 | RAG Pipeline | 📅 | Vector DB, embeddings, retrieval |
-| 11 | SBOM + Supply Chain | 📅 | Signed artifacts, vulnerability scanning |
-| 12 | Monitoring | 📅 | Prometheus, Grafana, Loki |
-| 13 | Production Ready | 📅 | Health checks, autoscaling, backups |
-| 14 | Integration + Demo | 📅 | End-to-end demo, documentation |
+| Day | Focus                 | Status | Key Deliverables                         |
+| --- | --------------------- | ------ | ---------------------------------------- |
+| 8   | Zero-Trust Networking | 🚧     | mTLS, network policies (Linkerd)         |
+| 9   | Ollama + LLM          | 📅     | Self-hosted LLM, API integration         |
+| 10  | RAG Pipeline          | 📅     | Vector DB, embeddings, retrieval         |
+| 11  | SBOM + Supply Chain   | 📅     | Signed artifacts, vulnerability scanning |
+| 12  | Monitoring            | 📅     | Prometheus, Grafana, Loki                |
+| 13  | Production Ready      | 📅     | Health checks, autoscaling, backups      |
+| 14  | Integration + Demo    | 📅     | End-to-end demo, documentation           |
 
 ## 🎓 Key Features & Learning Outcomes
 
 ### Zero-Touch Certificate Management
+
 Every service gets automatically-issued, automatically-renewed certificates:
 
 ```yaml
@@ -459,19 +482,21 @@ spec:
     name: vault-issuer
     kind: ClusterIssuer
   commonName: my-app.corp.local
-  duration: 720h        # 30 days
-  renewBefore: 240h     # Renew 10 days before expiry
+  duration: 720h # 30 days
+  renewBefore: 240h # Renew 10 days before expiry
 ```
 
 **Result**: Certificate issued in <30 seconds, renewed automatically at day 20.
 
 ### Two-Tier PKI Architecture
+
 - **Root CA** (offline, air-gapped): 10-year lifetime, 4096-bit
 - **Intermediate CA** (online, operational): 5-year lifetime, 2048-bit
 - **Short-lived certificates**: 30-day lifetime (reduces blast radius)
 - **Least privilege**: Separate PKI roles per service type
 
 ### Infrastructure as Code
+
 Everything is version controlled and reproducible:
 
 ```bash
@@ -492,6 +517,7 @@ make kind-down && make kind-up
 - ✅ HSM integration for key protection
 - ✅ Vault for secret management
 - ✅ Separate PKI roles (least privilege)
+- ✅ Automated Governance via API (Permission-First)
 - ✅ Automated security scanning (Trivy)
 - ✅ SBOM generation for supply chain transparency
 - ✅ CI/CD pipeline with GitHub Actions
@@ -532,6 +558,7 @@ cd cluster/foundation/vault-pki
 ```
 
 **Test Coverage:**
+
 - CoreDNS: 7 tests (DNS resolution, pods, deployment)
 - Vault: 9 tests (status, seal, PKI, service)
 - SoftHSM: 3 tests (token, slots, configuration)
@@ -542,7 +569,9 @@ cd cluster/foundation/vault-pki
 ## 💡 Why This Project?
 
 ### The Problem
+
 Most AI/LLM infrastructure tutorials:
+
 - Rely on expensive cloud services ($$$)
 - Use external CAs (no control)
 - Have manual certificate management (error-prone)
@@ -550,7 +579,9 @@ Most AI/LLM infrastructure tutorials:
 - Are not reproducible (snowflake servers)
 
 ### The Solution
+
 Build from first principles with:
+
 - ✅ Zero cloud costs (self-hosted)
 - ✅ Full PKI control (your CA, your rules)
 - ✅ Zero-touch automation (no manual ops)
@@ -568,6 +599,7 @@ Build from first principles with:
 ## 🚦 Getting Started Paths
 
 ### Path 1: Quick Demo (15 minutes)
+
 ```bash
 # Just see what we've built
 cd cluster/foundation/cert-manager
@@ -575,9 +607,11 @@ cd cluster/foundation/cert-manager
 ```
 
 ### Path 2: Full Local Setup (1-2 hours)
+
 Follow the [Quick Start](#-quick-start) guide above.
 
 ### Path 3: Production Deployment (Day 14+)
+
 Deploy to Proxmox following the production guides (coming).
 
 ## 🤝 Contributing
@@ -603,6 +637,7 @@ This is a learning project and documentation contributions are welcome! Areas fo
 ## 🗺️ Roadmap
 
 ### Short Term (Day 7)
+
 - [x] GitHub Actions CI/CD pipeline
 - [x] Security scanning (Trivy, Grype)
 - [x] SBOM generation (Syft)
@@ -610,12 +645,14 @@ This is a learning project and documentation contributions are welcome! Areas fo
 - [ ] Week 1 demo and documentation
 
 ### Medium Term (Days 8-12)
+
 - [ ] mTLS between all services
 - [ ] Deploy Ollama with LLM
 - [ ] RAG pipeline with Qdrant
 - [ ] Prometheus + Grafana monitoring
 
 ### Long Term (Days 13-14+)
+
 - [ ] Production deployment to Proxmox
 - [ ] High availability setup
 - [ ] Disaster recovery procedures
@@ -637,6 +674,7 @@ Apache 2.0 - See [LICENSE](LICENSE) file for details.
 ## 👤 Author
 
 **John Young Suh**
+
 - Building production-grade infrastructure from first principles
 - Following a 14-day DevSecOps sprint
 - Learning by shipping, documenting everything
@@ -649,4 +687,4 @@ Apache 2.0 - See [LICENSE](LICENSE) file for details.
 
 ---
 
-*Last updated: Day 6 complete - Production CI/CD pipeline with security scanning and SBOM generation ✨*
+_Last updated: Day 6 complete - Production CI/CD pipeline with security scanning and SBOM generation ✨_

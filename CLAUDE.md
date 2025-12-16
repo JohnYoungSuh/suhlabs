@@ -9,18 +9,41 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 **Framework location:** `/home/suhlabs/projects/suhlabs/ai-agent-governance-framework/UNIFIED-AI-AGENT-GOVERNANCE-FRAMEWORK-v3.0.md`
 
 **Key governance principles applicable to this work:**
+
 - **Namespace scope:** Operations limited to `aiops-substrate` project directory
 - **Inspection-first protocol:** Always read before write; list resources before modification
 - **Destructive operations:** Require explicit confirmation with impact analysis and rollback plan
 - **No assumptions:** When scope or ownership is unclear, ask for clarification
 - **Audit trail:** All significant actions should be documented
-- **Fail-safe:** Default to deny; escalate with full context when uncertain
+- Fail-safe: Default to deny; escalate with full context when uncertain
+
+### Automated Governance via API
+
+**Speed Escalation Pattern:** Instead of manual escalation for every action, use the Governance API.
+
+1. **Check for Governance URL:** If `governance_url` is defined in inventory/vars, YOU MUST USE IT.
+2. **Use the Handshake Task:** Include `tasks/ask_governance.yml` in your playbook.
+3. **Respect the Result:**
+   - If the task fails (403 Forbidden/Auth Denied): STOP IMMEDIATELY. Do not proceed.
+   - If the task succeeds (200 OK): Proceed with the regulated action.
+
+**Example Usage:**
+
+```yaml
+- name: "Ask for Permission"
+  ansible.builtin.include_tasks: ../tasks/ask_governance.yml
+  vars:
+    action_type: "deployment"
+    target_asset: "production-svr-01"
+    security_context: "{{ cve_score }}"
+```
 
 ## Project Overview
 
 **AIOps Substrate** is a production-grade AI operations platform built with 100% open-source tools. The project implements enterprise DevSecOps practices including infrastructure as code, automated certificate management, CI/CD pipelines, and zero-trust security patterns.
 
 **Key characteristics:**
+
 - Self-hosted infrastructure with zero cloud costs
 - Two-tier PKI with automated certificate lifecycle management
 - Security-first design with shift-left practices
@@ -149,18 +172,21 @@ Infrastructure Layer (Kubernetes, Terraform, Ansible)
 ### Critical Dependencies
 
 **CoreDNS:**
+
 - Provides service discovery for Kubernetes
 - Custom corp.local DNS zone
 - Required for cert-manager to resolve Vault service
 - Must be deployed first
 
 **SoftHSM:**
+
 - Software HSM for development (use YubiHSM 2 in production)
 - Provides PKCS#11 interface for Vault auto-unseal
 - Stores Vault master key securely
 - Required before Vault can start
 
 **Vault PKI:**
+
 - Two-tier CA hierarchy (Root CA + Intermediate CA)
 - Root CA: 10-year, 4096-bit RSA, offline in production
 - Intermediate CA: 5-year, 2048-bit RSA, online operations
@@ -168,6 +194,7 @@ Infrastructure Layer (Kubernetes, Terraform, Ansible)
 - Provides certificates for all services
 
 **cert-manager:**
+
 - Automates certificate issuance and renewal
 - Integrates with Vault PKI via ClusterIssuers
 - Issues certificates with 30-day lifetime, auto-renews at day 20
@@ -176,6 +203,7 @@ Infrastructure Layer (Kubernetes, Terraform, Ansible)
 ### Service Dependency Order
 
 Critical: Services must be deployed in this order:
+
 1. CoreDNS (provides DNS resolution)
 2. SoftHSM (provides HSM for Vault)
 3. Vault (needs SoftHSM for auto-unseal)
@@ -225,12 +253,14 @@ aiops-substrate/
 **MANDATORY per Governance Framework Section 1:** Always check GitHub issues before implementing:
 
 1. **Search GitHub issues first:**
+
    - Go to the technology's GitHub repository
    - Search issues: `is:issue <your-feature>`
    - Read both open AND closed issues
    - Look for "Enterprise only" or "requires X edition" limitations
 
 2. **Validate against known issues:**
+
    - Search for configuration keywords
    - Check for CrashLoopBackOff, ImagePullBackOff patterns
    - Look for discussions about workarounds
@@ -255,8 +285,8 @@ metadata:
   name: my-service-cert
 spec:
   secretName: my-service-tls
-  duration: 720h        # 30 days
-  renewBefore: 240h     # Renew at day 20
+  duration: 720h # 30 days
+  renewBefore: 240h # Renew at day 20
   issuerRef:
     name: vault-issuer-ai-ops
     kind: ClusterIssuer
@@ -334,6 +364,7 @@ POST /api/v1/chat
 ```
 
 Key components:
+
 - `ai_ops_agent/intent/`: Natural language → Intent parsing
 - `ai_ops_agent/rag/`: Context retrieval from vector DB
 - `ai_ops_agent/mcp/`: Policy enforcement (security, compliance)
@@ -351,6 +382,7 @@ cd cluster/foundation
 ```
 
 Tests include:
+
 - DNS resolution (cluster.local + corp.local)
 - Vault status and seal state
 - SoftHSM token and slots
@@ -380,6 +412,7 @@ kubectl wait --for=condition=ready certificate/test-cert --timeout=60s
 ### CI/CD Pipeline
 
 GitHub Actions CD pipeline runs on every push:
+
 - Python tests (pytest)
 - Security scanning (Trivy for vulnerabilities)
 - SBOM generation (Syft for CycloneDX/SPDX)
@@ -402,6 +435,7 @@ GitHub Actions CD pipeline runs on every push:
 ### VS Code Workspace
 
 Project includes `suhlabs.code-workspace` with recommended extensions:
+
 - Kubernetes
 - Terraform
 - Ansible
@@ -435,12 +469,14 @@ make kind-down
 ### Development vs Production
 
 **Current setup is for DEVELOPMENT:**
+
 - ⚠️ SoftHSM (software keys, not hardware)
 - ⚠️ Root CA online (should be air-gapped)
 - ⚠️ Simple passwords for demos
 - ⚠️ No audit logging
 
 **Production requires:**
+
 - ✓ YubiHSM 2 or AWS CloudHSM
 - ✓ Root CA offline on air-gapped machine
 - ✓ Strong random passwords (16+ chars)
@@ -467,33 +503,26 @@ make kind-down
 **Per Framework Section 21:** Follow this workflow for all tasks:
 
 **Phase 1: Inspection (Always Read-Only First)**
+
 1. Identify current environment and verify namespace (`aiops-substrate`)
 2. List relevant resources (files, deployments, certificates, etc.)
 3. Read existing configurations before proposing changes
 4. Check current state vs desired state
 
-**Phase 2: Planning**
-5. Propose action and classify risk level (safe/medium/high)
-6. Identify dependencies and prerequisites
-7. Assess impact and blast radius
-8. For destructive operations: prepare rollback plan
+**Phase 2: Planning** 5. Propose action and classify risk level (safe/medium/high) 6. Identify dependencies and prerequisites 7. Assess impact and blast radius 8. For destructive operations: prepare rollback plan
 
-**Phase 3: Validation**
-9. For medium/high-risk operations: describe dry-run approach
-10. Confirm operations are idempotent (can be safely repeated)
-11. Verify namespace boundaries (staying in project directory)
+**Phase 3: Validation** 9. For medium/high-risk operations: describe dry-run approach 10. Confirm operations are idempotent (can be safely repeated) 11. Verify namespace boundaries (staying in project directory)
 
-**Phase 4: Execution**
-12. Execute approved actions
-13. Verify expected outcome
-14. Document changes in commit messages
+**Phase 4: Execution** 12. Execute approved actions 13. Verify expected outcome 14. Document changes in commit messages
 
 **Phase 5: Escalation (when needed)**
+
 - Scope is ambiguous or ownership unclear → Ask user for clarification
 - Operation is destructive beyond routine → Request explicit confirmation
 - Cross-namespace or cross-project operation needed → Seek approval
 
 **Example escalation:**
+
 ```
 🔔 Escalation Required
 
@@ -510,11 +539,13 @@ Proceed? (yes/no)
 ### Common Issues
 
 **ImagePullBackOff:**
+
 - Verify image exists: `docker images | grep <image>`
 - Load into cluster: `kind load docker-image <image>`
 - Check image pull policy in deployment
 
 **Certificate not issued:**
+
 ```bash
 # Check certificate status
 kubectl describe certificate <name>
@@ -527,6 +558,7 @@ kubectl exec -n cert-manager <pod> -- nc -zv vault.vault.svc.cluster.local 8200
 ```
 
 **Vault sealed:**
+
 ```bash
 # Check seal status
 kubectl exec -n vault vault-0 -- vault status
@@ -536,6 +568,7 @@ kubectl logs -n vault vault-0 | grep -i pkcs11
 ```
 
 **DNS not resolving:**
+
 ```bash
 # Check CoreDNS pods
 kubectl get pods -n kube-system -l k8s-app=coredns
@@ -545,6 +578,7 @@ kubectl run -it test --image=busybox:1.36 --rm -- nslookup kubernetes.default
 ```
 
 **Pod crashes/CrashLoopBackOff:**
+
 ```bash
 # Check recent logs
 kubectl logs <pod> --previous
@@ -573,6 +607,7 @@ kubectl describe pod <pod>
 9. **THEN propose modification** (only after inspection complete)
 
 **For interactive debugging:**
+
 - `kubectl exec -it <pod> -- /bin/sh` (proceed with caution, changes inside pod are ephemeral)
 
 **Framework rule:** Never assume - always inspect current state before making changes.
@@ -627,6 +662,7 @@ kubectl describe pod <pod>
 5. **Human confirmation:** Wait for explicit approval
 
 **Example:**
+
 ```
 📋 Destructive Operation Analysis
 
@@ -649,6 +685,7 @@ Proceed with deletion? (yes/no)
 **Per Framework Section 8.2 & 20.1:** Environment variables MUST be declared in orchestration manifests, never generated at runtime.
 
 ❌ **WRONG (Tier 3 violation):**
+
 ```bash
 # entrypoint.sh
 export DATABASE_URL="postgres://user:pass@localhost/db"
@@ -656,12 +693,13 @@ python app.py
 ```
 
 ✅ **CORRECT (Framework compliant):**
+
 ```yaml
 # docker-compose.yml or k8s deployment.yaml
 services:
   app:
     environment:
-      DATABASE_URL: ${DATABASE_URL}  # Declared in manifest
+      DATABASE_URL: ${DATABASE_URL} # Declared in manifest
 ```
 
 ### File Operations Scope
@@ -669,11 +707,13 @@ services:
 **Per Framework Section 9.1:** File operations restricted to:
 
 ✅ **Allowed:**
+
 - `/home/suhlabs/projects/suhlabs/aiops-substrate/` (project directory)
 - `/tmp/aiops-substrate-*` (temporary files with namespace prefix)
 - Declared volume mounts in Kubernetes manifests
 
 ❌ **Prohibited:**
+
 - Modifications outside project directory
 - System directories (`/etc`, `/usr`, `/var` unless explicitly mounted)
 - Other projects or user home directories
@@ -683,11 +723,13 @@ services:
 **Per Framework Section 10:** All secrets MUST be retrieved from approved stores:
 
 ✅ **Approved secret stores:**
+
 - HashiCorp Vault (primary for this project)
 - Kubernetes Secrets (with encryption at rest via cert-manager)
 - AWS Secrets Manager (for production on AWS)
 
 ❌ **Prohibited:**
+
 - Secrets in code or comments
 - Secrets in environment variables (except orchestration-managed)
 - Secrets in logs or stdout
@@ -711,6 +753,7 @@ Before taking any action in this repository:
 ---
 
 **Governance Attestation:**
+
 - Framework Version: v3.0.0
 - Framework Location: `/home/suhlabs/projects/suhlabs/ai-agent-governance-framework/UNIFIED-AI-AGENT-GOVERNANCE-FRAMEWORK-v3.0.md`
 - Namespace: `aiops-substrate`

@@ -18,13 +18,23 @@ BACKUP_FILE="../docs-backup-$(date +%Y%m%d-%H%M%S).tar.gz"
 tar -czf "$BACKUP_FILE" docs/
 echo "✅ Backup created: $BACKUP_FILE"
 
-# Create cleanup branch
-git checkout -b docs-picerl-cleanup
-echo "✅ Created branch: docs-picerl-cleanup"
+# Create cleanup branch (skip if exists)
+if git show-ref --verify --quiet refs/heads/docs-picerl-cleanup; then
+  echo "✅ Branch docs-picerl-cleanup already exists (skipping)"
+  git checkout docs-picerl-cleanup
+else
+  git checkout -b docs-picerl-cleanup
+  echo "✅ Created branch: docs-picerl-cleanup"
+fi
 
-# Tag pre-cleanup state
-git tag "pre-picerl-cleanup-$(date +%Y%m%d)"
-echo "✅ Tagged current state"
+# Tag pre-cleanup state (skip if exists)
+TAG_NAME="pre-picerl-cleanup-$(date +%Y%m%d)"
+if git tag -l | grep -q "$TAG_NAME"; then
+  echo "✅ Tag $TAG_NAME already exists (skipping)"
+else
+  git tag "$TAG_NAME"
+  echo "✅ Tagged current state"
+fi
 
 # Phase 3: Create Archive Directories
 echo ""

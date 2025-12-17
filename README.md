@@ -97,6 +97,63 @@ Building a self-hosted AI infrastructure platform with enterprise-grade security
 └─────────────────────────────────────────────────────────┘
 ```
 
+## 📚 Documentation Structure
+
+Documentation follows the **PICERL incident response framework** with layered progressive disclosure:
+
+### Operations Documentation (OPS-PICERL-\*)
+
+Operational procedures and runbooks for system management:
+
+- **[PREPARATION](docs/OPS-PICERL-PREPARATION.md)** - System setup, architecture, K3s deployment
+- **[RECOVERY](docs/OPS-PICERL-RECOVERY.md)** - Disaster recovery, backup/restore procedures
+- **[IDENTIFICATION](docs/OPS-PICERL-IDENTIFICATION.md)** - Monitoring, observability, alerting
+- **[ERADICATION](docs/OPS-PICERL-ERADICATION.md)** - Troubleshooting, bug fixes, maintenance
+- **[CONTAINMENT](docs/OPS-PICERL-CONTAINMENT.md)** - Environment isolation, change control
+- **[LESSONS](docs/OPS-PICERL-LESSONS.md)** - Sprint retrospectives, operational learnings
+
+### Security Documentation (SECURITY-PICERL-\*)
+
+Security procedures and incident response:
+
+- **[PREPARATION](docs/SECURITY-PICERL-PREPARATION.md)** - Zero-trust setup, Vault PKI, hardening
+- **[IDENTIFICATION](docs/SECURITY-PICERL-IDENTIFICATION.md)** - SIEM, threat detection, audit logging
+- **[CONTAINMENT](docs/SECURITY-PICERL-CONTAINMENT.md)** - Isolation, access control, emergency response
+- **[ERADICATION](docs/SECURITY-PICERL-ERADICATION.md)** - Patching, secret rotation, remediation
+- **[RECOVERY](docs/SECURITY-PICERL-RECOVERY.md)** - Breach recovery, forensics, RCA
+- **[LESSONS](docs/SECURITY-PICERL-LESSONS.md)** - Security postmortems, incident learnings
+
+### Document Structure
+
+Each PICERL document follows a consistent layered format:
+
+```markdown
+📊 At-a-Glance (30 seconds)
+└─ Visual diagrams, TL;DR, key decisions
+
+🚀 Quick Start (5 minutes)
+└─ Decision trees, checklists, common pitfalls
+
+📋 Policy → Standards → Guidelines
+└─ WHY → MUST → SHOULD
+
+📖 Procedures (Step-by-step runbooks)
+└─ Copy-paste commands, validation steps
+
+💻 Implementation (Working examples)
+└─ Complete scripts, configurations
+
+📚 Deep Dive (Advanced topics)
+└─ Architecture details, edge cases
+```
+
+### Supporting Documentation
+
+- **[DESIGN-v2-GOVERNANCE](docs/DESIGN-v2-GOVERNANCE.md)** - Governance service integration design
+- **[MIGRATION-AUDIT](docs/MIGRATION-AUDIT.md)** - PICERL migration tracking
+- **[ARCHIVE](docs/ARCHIVE/)** - Legacy documentation (historical reference)
+- **[BUSINESS](docs/BUSINESS/)** - Product and business documentation
+
 ## 🚀 Quick Start
 
 ### Prerequisites

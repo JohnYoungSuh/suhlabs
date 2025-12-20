@@ -82,3 +82,6 @@ services/photoprism/kubernetes/06-authelia.yaml
 *.swo
 *~
 .DS_Store
+
+# Freemium Strategy Documents (do not sync)
+docs/BUSINESS/FREEMIUM*.md

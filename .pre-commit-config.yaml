@@ -107,6 +107,12 @@ repos:
               services/
           )$
 
+  # GitHub Actions linting
+  - repo: https://github.com/rhysd/actionlint
+    rev: v1.7.7
+    hooks:
+      - id: actionlint
+
 # Custom local hooks
   - repo: local
     hooks:

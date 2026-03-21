@@ -19,7 +19,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout Code
-        uses: actions/checkout@v4.2.2
+        uses: actions/checkout@0c366fd6a839edf440554fa01a7085ccba70ac98 # v6.0.2
 
       - name: Create k8s Kind Cluster
         uses: helm/kind-action@v1.12.0
@@ -47,7 +47,7 @@ jobs:
           # 3. Apply inference payload
           kubectl apply -f cluster/workloads/ai-inference/deployment.yaml
           # Wait and assert AI integration agent startup actually succeeds
-          kubectl wait --for=condition=Ready pods -n ai-ops -l app=ai-ops-agent --timeout=60s || echo "Waiting bypassed for dummy cluster"
+          kubectl wait --for=condition=Ready pods -n ai-ops -l app=ai-ops-agent --timeout=60s
           echo "E2E assertions completed!"
 
   publish-images:
@@ -56,7 +56,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout Code
-        uses: actions/checkout@v4.2.2
+        uses: actions/checkout@0c366fd6a839edf440554fa01a7085ccba70ac98 # v6.0.2
 
       - name: Install Cosign
         uses: sigstore/cosign-installer@v3.4.0

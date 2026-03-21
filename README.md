@@ -769,6 +769,14 @@ Here is the complete pathway for a secure AI query:
 *![Grafana Dashboard showing Inference Metrics and Resource Utilization](/absolute/path/to/placeholder/grafana-dashboard.png)*
 *(Note: See the Dashboard screenshot above for comprehensive execution metrics!)*
 
+## 🛡️ CI/CD Best Practices & Security Policy
+
+To maintain the highest level of supply chain security, this project strictly enforces the following GitHub Action policies:
+1. **Immutable Action Versions**: All GitHub Actions are strictly pinned to absolute full-length SHA hashes (e.g., `actions/checkout@0c366fd...`) or verified stable version tags (e.g., `trivy-action@0.35.0`). Floating tags like `@master` or `@main` are explicitly banned due to the risk of upstream tag hijacking. 
+2. **Automated Dependabot Updates**: Action versions are safely managed via a `.github/dependabot.yml` configuration parsing weekly pull requests to keep integrations organically current without manual tracking overhead.
+3. **Pre-commit Enforcement**: A strict `actionlint` hook evaluates all workflow adjustments via `.pre-commit-config.yaml` to prevent regressions back to unpinned states.
+4. **Secret Scanning Strategy**: Our pipelines consolidate secret sweeping strictly to `gitleaks-action@v2.3.9` for maximum speed, deliberately suppressing duplicate unpinned legacy scanners on standard CI runs.
+
 ## 🤝 Contributing
 
 This is a learning project and documentation contributions are welcome! Areas for contribution:

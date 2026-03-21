@@ -126,7 +126,7 @@ jobs:
             --output json --file grype-results.json || true
 
       - name: Upload Grype results
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         if: always()
         with:
           name: grype-results
@@ -209,7 +209,7 @@ jobs:
         continue-on-error: true
 
       - name: Upload safety results
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         if: always()
         with:
           name: safety-results

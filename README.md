@@ -1,3 +1,4 @@
+<!-- markdownlint-disable MD013 -->
 # AIOps Substrate: Self-Hosted Secure LLM Infrastructure
 
 Production-grade AI operations platform built with 100% open-source tools and zero cloud costs. A 14-day sprint implementing enterprise DevSecOps practices from first principles.
@@ -73,7 +74,7 @@ graph TD
     CertManager(cert-manager)
     
     %% Foundation Layer
-    subgraph Foundation Services
+    subgraph FS [Foundation Services]
         Vault[HashiCorp Vault<br/>PKI & Secrets]
         SoftHSM{SoftHSM / YubiHSM<br/>Auto-Unseal}
         CoreDNS(CoreDNS)
@@ -84,13 +85,13 @@ graph TD
     Vault -->|Decrypts Master Key| SoftHSM
     
     %% Infrastructure Layer
-    subgraph Infrastructure
+    subgraph Infra [Infrastructure]
         K8s[Kubernetes Orchestration<br/>K3s / Kind]
         Longhorn[(Longhorn CSI<br/>Persistent Storage)]
         K8s <--> Longhorn
     end
     
-    Foundation Services --> Infrastructure
+    FS --> Infra
 ```
 
 ## 🔄 Certificate Lifecycle Flow
@@ -705,6 +706,68 @@ Follow the [Quick Start](#-quick-start) guide above.
 ### Path 3: Production Deployment (Day 14+)
 
 Deploy to Proxmox following the production guides (coming).
+
+## 🎭 End-to-End Demo & Operator Showcase
+
+### The AIOpsAgent Operator
+
+We've built a custom Kubernetes Operator to manage the lifecycle of our `AIOpsAgent` deployments. This operator handles the secure injection of Vault secrets and mTLS sidecars correctly.
+
+Here is a sample `AIOpsAgent` custom resource:
+
+```yaml
+apiVersion: aiops.corp.local/v1alpha1
+kind: AIOpsAgent
+metadata:
+  name: secure-ai-agent
+  namespace: default
+spec:
+  replicas: 1
+  image: "ai-ops-agent:latest"
+  vaultSecretPath: "secret/data/ai-ops-agent"
+```
+
+To see the operator in action, watch how it provisions your agent securely:
+
+```bash
+$ kubectl get aiopsagents
+NAME              REPLICAS   STATUS    AGE
+secure-ai-agent   1          Ready     2m
+
+$ kubectl describe aiopsagent secure-ai-agent
+Name:         secure-ai-agent
+Namespace:    default
+API Version:  aiops.corp.local/v1alpha1
+Kind:         AIOpsAgent
+Status:
+  Conditions:
+    Status:  True
+    Type:    Ready
+  Ready Replicas: 1
+Events:
+  Type    Reason            Age   From               Message
+  ----    ------            ----  ----               -------
+  Normal  DeploymentCreated 2m    aiopsagent-controller Created Deployment default/secure-ai-agent
+  Normal  VaultInjected     2m    aiopsagent-controller Successfully injected Vault agent sidecar annotations
+```
+
+### Full E2E Inference Flow
+
+Here is the complete pathway for a secure AI query:
+
+1. **Client Request:** A user sends an encrypted `curl` request to the AI Ops Agent with mTLS enforced.
+   ```bash
+   curl --cert client.crt --key client.key --cacert ca.crt \
+     -X POST https://ai-ops-agent.corp.local:8000/api/v1/chat \
+     -H "Content-Type: application/json" \
+     -d '{"query": "Deploy a new test namespace"}'
+   ```
+2. **FastAPI & Vault:** The FastAPI service authenticates the request. It retrieves dynamic infrastructure credentials directly from HashiCorp Vault using the injected secret path.
+3. **LLM Runtime (Ollama):** The extracted intent is forwarded to the self-hosted Ollama model for processing.
+4. **Action Execution:** The AI synthesizes the infrastructure instruction and returns the deployment plan.
+
+*![Grafana Dashboard showing Inference Metrics and Resource Utilization](/absolute/path/to/placeholder/grafana-dashboard.png)*
+*(Note: See the Dashboard screenshot above for comprehensive execution metrics!)*
 
 ## 🤝 Contributing
 

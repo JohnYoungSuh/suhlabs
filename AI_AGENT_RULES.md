@@ -1,3 +1,4 @@
+<!-- markdownlint-disable MD013 -->
 # AI_AGENT_RULES.md
 
 This file provides guidance to **ALL AI Agents** (Claude Code, Cursor, GitHub Copilot, Antigravity, etc.) when working with code in this repository.
@@ -159,7 +160,7 @@ cd cluster/ai-ops-agent
 
 ### Three-Layer Stack
 
-```
+```text
 Application Layer (AI Ops Agent, Services)
     ↓
 Certificate Management Layer (cert-manager + Vault PKI)
@@ -213,7 +214,7 @@ Critical: Services must be deployed in this order:
 
 ## Code Organization
 
-```
+```text
 aiops-substrate/
 ├── cluster/                    # Kubernetes resources
 │   ├── foundation/            # Foundation services (CoreDNS, Vault, SoftHSM)

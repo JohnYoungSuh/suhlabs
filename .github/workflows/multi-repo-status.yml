@@ -5,6 +5,9 @@ on:
     schedule:
         - cron: "0 9 * * 1" # Every Monday at 9 AM
 
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
 jobs:
     check-multi-repo-status:
         name: Check All Repository Status

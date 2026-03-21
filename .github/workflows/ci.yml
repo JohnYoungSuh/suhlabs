@@ -8,6 +8,7 @@ on:
   workflow_dispatch:  # Allow manual trigger
 
 env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
   REGISTRY: ghcr.io
   KIND_VERSION: v0.20.0
   KUBECTL_VERSION: v1.28.0

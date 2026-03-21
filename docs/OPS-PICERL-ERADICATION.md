@@ -209,6 +209,45 @@ kubectl delete volumesnapshot --all
 restic forget --keep-daily 7 --keep-weekly 4 --prune
 ```
 
+### Runbook E4: Storage and Secrets Edge Cases (Production)
+
+#### E4-Vault: Auto-Unseal Failures in Production
+
+**Symptoms:** Vault pods are running but not ready (`0/1`); applications fail to retrieve secrets. K3s events show Readiness probe failed.
+
+**Diagnosis:**
+1. Execute into the active Vault pod: `kubectl exec -n vault vault-0 -- vault status`
+2. If `Sealed` is `true`, the auto-unseal mechanism (e.g., AWS KMS, transit, YubiHSM) failed.
+3. Check Vault logs for KMS connectivity errors: `kubectl logs -n vault vault-0 | grep -i 'core: unseal'`
+
+**Fix:**
+```bash
+# 1. Fallback to manual unseal with recovery keys (if Raft auto-unseal is completely unreachable)
+kubectl exec -n vault vault-0 -- vault operator unseal <Recovery-Key-1>
+kubectl exec -n vault vault-0 -- vault operator unseal <Recovery-Key-2>
+kubectl exec -n vault vault-0 -- vault operator unseal <Recovery-Key-3>
+
+# 2. Check KMS connectivity from within the cluster
+# Ensure egress traffic from internal Vault nodes to KMS endpoints is not blocked by NetworkPolicies
+```
+
+#### E4-Longhorn: Replica Rebuilds & Degraded Volumes
+
+**Symptoms:** Longhorn UI shows warning state. `kubectl get volumes -n longhorn-system` shows degraded volumes.
+
+**Diagnosis:**
+Usually caused by a preempted node or temporary IO disruption. Longhorn automatically flags replicas as `ERR` and drops them.
+
+**Fix:**
+```bash
+# 1. Automatic Rebuild: Longhorn will automatically start rebuilding a replica on another available node. Wait for the sync to complete.
+# 2. If rebuilding is stuck, access the Longhorn UI via port-forward:
+kubectl port-forward -n longhorn-system svc/longhorn-frontend 8080:80
+
+# 3. In the UI, navigate to the Volume, manually delete the `ERR` replica, and click "Replenish Replicas".
+# 4. For chronic degradation, verify disk IO limits or Node scheduling constraints.
+```
+
 ---
 
 ## 💻 Implementation

@@ -1,0 +1,66 @@
+name: Multi-Repo Sync Status
+
+on:
+    workflow_dispatch: # Manual trigger
+    schedule:
+        - cron: "0 9 * * 1" # Every Monday at 9 AM
+
+jobs:
+    check-multi-repo-status:
+        name: Check All Repository Status
+        runs-on: ubuntu-latest
+
+        steps:
+            - name: Checkout aiops-substrate
+              uses: actions/checkout@v4
+              with:
+                  path: aiops-substrate
+
+            - name: Check for uncommitted changes
+              working-directory: aiops-substrate
+              run: |
+                  if [[ -n $(git status -s) ]]; then
+                    echo "⚠️ Uncommitted changes detected"
+                    git status -s
+                  else
+                    echo "✅ Repository is clean"
+                  fi
+
+            - name: Check branch status
+              working-directory: aiops-substrate
+              run: |
+                  BRANCH=$(git rev-parse --abbrev-ref HEAD)
+                  echo "📍 Current branch: $BRANCH"
+
+                  # Check if ahead/behind
+                  git fetch origin
+                  AHEAD=$(git rev-list --count origin/$BRANCH..$BRANCH)
+                  BEHIND=$(git rev-list --count $BRANCH..origin/$BRANCH)
+
+                  if [ "$AHEAD" -gt 0 ]; then
+                    echo "⚠️ $AHEAD commits ahead of origin"
+                  fi
+
+                  if [ "$BEHIND" -gt 0 ]; then
+                    echo "⚠️ $BEHIND commits behind origin"
+                  fi
+
+                  if [ "$AHEAD" -eq 0 ] && [ "$BEHIND" -eq 0 ]; then
+                    echo "✅ In sync with origin"
+                  fi
+
+            - name: Create status summary
+              run: |
+                  echo "# Multi-Repo Status Report" >> $GITHUB_STEP_SUMMARY
+                  echo "" >> $GITHUB_STEP_SUMMARY
+                  echo "**Date:** $(date)" >> $GITHUB_STEP_SUMMARY
+                  echo "" >> $GITHUB_STEP_SUMMARY
+                  echo "## Repository Status" >> $GITHUB_STEP_SUMMARY
+                  echo "" >> $GITHUB_STEP_SUMMARY
+                  echo "- ✅ aiops-substrate: Checked" >> $GITHUB_STEP_SUMMARY
+                  echo "- ⏭️ ai-agent-governance-framework: Requires manual check" >> $GITHUB_STEP_SUMMARY
+                  echo "- ⏭️ suhlabs-infr-ai-poc: Requires manual check" >> $GITHUB_STEP_SUMMARY
+                  echo "- ⏭️ ml-antipatterns: Requires manual check" >> $GITHUB_STEP_SUMMARY
+                  echo "- ⏭️ suhlabs-web: Requires manual check" >> $GITHUB_STEP_SUMMARY
+                  echo "" >> $GITHUB_STEP_SUMMARY
+                  echo "**Recommendation:** Run \`./tools/git-status-all.sh\` locally for complete status." >> $GITHUB_STEP_SUMMARY

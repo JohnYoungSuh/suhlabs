@@ -1,0 +1,51 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ollama-inference
+  namespace: ai-ops
+  labels:
+    app: ollama
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: ollama
+  template:
+    metadata:
+      labels:
+        app: ollama
+      annotations:
+        # Vault Agent Injector annotations to inject API keys/models securely
+        vault.hashicorp.com/agent-inject: "true"
+        vault.hashicorp.com/role: "ai-ops-agent"
+        vault.hashicorp.com/agent-inject-secret-config.yaml: "secret/data/ai-ops/ollama"
+        vault.hashicorp.com/agent-inject-template-config.yaml: |
+          {{- with secret "secret/data/ai-ops/ollama" -}}
+          HUGGINGFACE_TOKEN: "{{ .Data.data.hf_token }}"
+          {{- end }}
+    spec:
+      serviceAccountName: ai-ops-agent-sa
+      nodeSelector:
+        # Require a GPU node for credible LLM execution
+        nvidia.com/gpu: "present"
+      containers:
+      - name: ollama
+        image: ollama/ollama:latest
+        ports:
+        - containerPort: 11434
+        env:
+        - name: CONFIG_PATH
+          value: "/vault/secrets/config.yaml"
+        resources:
+          requests:
+            cpu: "2"
+            memory: "4Gi"
+          limits:
+            nvidia.com/gpu: "1" # Request exactly 1 GPU
+            memory: "16Gi"
+        readinessProbe:
+          httpGet:
+            path: /api/tags
+            port: 11434
+          initialDelaySeconds: 10
+          periodSeconds: 10

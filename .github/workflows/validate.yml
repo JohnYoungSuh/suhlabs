@@ -1,0 +1,136 @@
+name: Validate Code Quality
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main, develop]
+
+jobs:
+  shellcheck:
+    name: ShellCheck
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Run ShellCheck
+        uses: ludeeus/action-shellcheck@master
+        with:
+          scandir: './tools'
+          severity: warning
+      
+      - name: ShellCheck Results
+        if: failure()
+        run: echo "❌ ShellCheck found issues"
+
+  secret-scan:
+    name: Secret Detection
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      
+      - name: TruffleHog Secret Scan
+        uses: trufflesecurity/trufflehog@main
+        with:
+          path: ./
+          base: ${{ github.event.repository.default_branch }}
+          head: HEAD
+
+  yaml-lint:
+    name: YAML Lint
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Run yamllint
+        uses: ibiqlik/action-yamllint@v3
+        with:
+          config_file: .yamllint.yml
+          file_or_dir: cluster/ services/ .github/
+
+  markdown-lint:
+    name: Markdown Lint
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Run markdownlint
+        uses: nosborn/github-action-markdown-cli@v3.3.0
+        with:
+          files: .
+          config_file: .markdownlint.json
+          ignore_files: vendor/
+
+  commit-lint:
+    name: Commit Message Lint
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      
+      - name: Validate PR commits
+        uses: wagoid/commitlint-github-action@v5
+        with:
+          configFile: .commitlintrc.json
+
+  security-audit:
+    name: Security Audit
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Run Trivy vulnerability scanner
+        uses: aquasecurity/trivy-action@master
+        with:
+          scan-type: 'fs'
+          scan-ref: '.'
+          trivy-config: trivy.yaml
+          format: 'sarif'
+          output: 'trivy-results.sarif'
+      
+      - name: Upload Trivy results to GitHub Security
+        uses: github/codeql-action/upload-sarif@v2
+        if: always()
+        with:
+          sarif_file: 'trivy-results.sarif'
+
+  documentation-check:
+    name: Documentation Check
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Check for broken links in docs
+        uses: gaurav-nelson/github-action-markdown-link-check@v1
+        with:
+          use-quiet-mode: 'yes'
+          folder-path: 'docs/'
+          
+      - name: Verify required documentation
+        run: |
+          FILES=("README.md" "docs/GIT-WORKFLOW.md" "tools/README.md")
+          for file in "${FILES[@]}"; do
+            if [ ! -f "$file" ]; then
+              echo "❌ Missing required file: $file"
+              exit 1
+            fi
+          done
+          echo "✅ All required documentation present"

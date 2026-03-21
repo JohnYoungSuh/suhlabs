@@ -1,0 +1,22 @@
+# Longhorn Helm values
+# Provides HA Storage for Proxmox/K3s
+
+defaultSettings:
+  defaultReplicaCount: 3
+  
+  # Protect against node loss
+  replicaAutoBalance: "best-effort"
+  
+  # Automatically delete failed replica
+  storageOverProvisioningPercentage: 100
+  storageMinimalAvailablePercentage: 10
+  fastReplicaRebuildEnabled: true
+
+persistence:
+  defaultClassReplicaCount: 3
+  defaultClass: true
+  reclaimPolicy: Retain
+
+# Deploy recurring snapshot job to backup to S3 (example)
+# Add S3 credentials via k8s secret
+# defaultSettings.backupTarget: "s3://longhorn-backups@us-east-1/"

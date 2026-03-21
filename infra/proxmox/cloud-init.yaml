@@ -1,0 +1,26 @@
+# cloud-init-master.yaml
+#cloud-config
+package_update: true
+package_upgrade: true
+packages:
+  - qemu-guest-agent
+  - curl
+runcmd:
+  # Install K3s control plane with node taints via kubelet args
+  - curl -sfL https://get.k3s.io | INSTALL_K3S_EXEC="server --cluster-init --node-taint node-role.kubernetes.io/control-plane=effect:NoSchedule --disable servicelb --disable traefik" sh -
+---
+# cloud-init-worker.yaml
+#cloud-config
+package_update: true
+package_upgrade: true
+packages:
+  - qemu-guest-agent
+  - curl
+  - open-iscsi # Required for Longhorn CSI
+  - nfs-common
+runcmd:
+  # Enable and restart iscsid
+  - systemctl enable iscsid
+  - systemctl start iscsid
+  # Install K3s agent and join control plane
+  - curl -sfL https://get.k3s.io | K3S_URL=https://<MASTER_IP>:6443 K3S_TOKEN=<CLUSTER_TOKEN> INSTALL_K3S_EXEC="agent --node-label storage=longhorn" sh -

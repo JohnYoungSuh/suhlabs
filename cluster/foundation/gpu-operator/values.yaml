@@ -1,0 +1,23 @@
+# values-gpu-operator.yaml
+# Used to deploy nvidia/gpu-operator
+
+toolkit:
+  enabled: true
+
+driver:
+  enabled: false # Assuming host OS has drivers OR deploying on Proxmox where passthrough is used
+  
+devicePlugin:
+  enabled: true
+  config:
+    name: "nvidia-plugin-config"
+    default: "any"
+
+dcgmExporter:
+  enabled: true
+  serviceMonitor:
+    enabled: true
+    interval: 15s
+
+operator:
+  defaultRuntime: containerd

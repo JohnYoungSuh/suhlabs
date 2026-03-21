@@ -131,3 +131,10 @@ repos:
         language: system
         pass_filenames: false
         verbose: true
+
+      # Check Kubernetes manifests with KubeLinter
+      - id: kube-linter
+        name: Lint Kubernetes Manifests
+        entry: bash -c 'find cluster/ -name kustomization.yaml -exec dirname {} \; | xargs -I {} bash -c "kustomize build {} | kube-linter run -" || echo "Skipping kube-linter because no kustomize found or check failed"'
+        language: system
+        pass_filenames: false

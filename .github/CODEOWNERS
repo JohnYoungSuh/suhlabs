@@ -1,0 +1,23 @@
+# Code owners for automated review assignments
+
+# Global owners
+* @JohnYoungSuh
+
+# Multi-repo management tools
+/tools/ @JohnYoungSuh
+/tools/hooks/ @JohnYoungSuh
+
+# Documentation
+/docs/ @JohnYoungSuh
+/docs/GIT-WORKFLOW.md @JohnYoungSuh
+
+# CI/CD
+/.github/workflows/ @JohnYoungSuh
+
+# Infrastructure
+/cluster/ @JohnYoungSuh
+/ansible/ @JohnYoungSuh
+
+# Security
+/docs/SECURITY*.md @JohnYoungSuh
+/.github/workflows/validate.yml @JohnYoungSuh

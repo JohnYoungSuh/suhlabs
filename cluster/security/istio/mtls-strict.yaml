@@ -1,0 +1,48 @@
+apiVersion: security.istio.io/v1beta1
+kind: PeerAuthentication
+metadata:
+  name: default-strict-mtls
+  namespace: default
+spec:
+  mtls:
+    mode: STRICT
+---
+apiVersion: security.istio.io/v1beta1
+kind: PeerAuthentication
+metadata:
+  name: ai-ops-strict-mtls
+  namespace: ai-ops
+spec:
+  mtls:
+    mode: STRICT
+---
+apiVersion: networking.istio.io/v1alpha3
+kind: DestinationRule
+metadata:
+  name: enable-mtls-ai-ops
+  namespace: ai-ops
+spec:
+  host: "*.ai-ops.svc.cluster.local"
+  trafficPolicy:
+    tls:
+      mode: ISTIO_MUTUAL
+---
+apiVersion: security.istio.io/v1beta1
+kind: AuthorizationPolicy
+metadata:
+  name: ai-ops-allow-nothing
+  namespace: ai-ops
+spec:
+  {} # Matches all requests and defaults to DENY if no other allow policies exist
+---
+apiVersion: security.istio.io/v1beta1
+kind: AuthorizationPolicy
+metadata:
+  name: ai-ops-allow-internal
+  namespace: ai-ops
+spec:
+  action: ALLOW
+  rules:
+  - from:
+    - source:
+        namespaces: ["ai-ops", "default", "istio-system"]

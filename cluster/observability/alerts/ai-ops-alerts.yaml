@@ -1,0 +1,96 @@
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: ai-ops-alerts
+  namespace: observability
+  labels:
+    role: alert-rules
+    release: prometheus # Needs to match prometheus rule selector
+spec:
+  groups:
+  - name: vault-alerts
+    rules:
+    - alert: VaultSealed
+      expr: vault_sys_core_unsealed == 0
+      for: 1m
+      labels:
+        severity: critical
+      annotations:
+        summary: "Vault instance is sealed"
+        description: "Vault instance {{ $labels.instance }} has been sealed for more than 1 minute."
+
+    - alert: VaultHighRequestLatency
+      expr: histogram_quantile(0.99, sum(rate(vault_core_handle_request_duration_seconds_bucket[5m])) by (le)) > 1
+      for: 5m
+      labels:
+        severity: warning
+      annotations:
+        summary: "Vault High Request Latency"
+        description: "Vault 99th percentile request latency is greater than 1s for over 5 minutes."
+
+    - alert: VaultRaftLeaderLost
+      expr: sum(vault_raft_leadership_transitions_total) > 0
+      for: 5m
+      labels:
+        severity: warning
+      annotations:
+        summary: "Vault Raft Leader Transitions Detected"
+        description: "Vault raft has undergone leadership transitions. Check quorum health."
+
+    - alert: VaultHAQuorumLost
+      expr: sum(vault_raft_peers) < 2
+      for: 1m
+      labels:
+        severity: critical
+      annotations:
+        summary: "Vault HA Quorum Lost"
+        description: "Vault raft peers dropped below 2. Cluster may be unavailable or split-brain."
+
+  - name: cert-manager-alerts
+    rules:
+    - alert: CertManagerCertExpirySoon
+      expr: (certmanager_certificate_expiration_timestamp_seconds - time()) / 86400 < 7
+      for: 1h
+      labels:
+        severity: warning
+      annotations:
+        summary: "Certificate Expiration Warning"
+        description: "Certificate {{ $labels.name }} in namespace {{ $labels.namespace }} expires in less than 7 days."
+
+    - alert: CertManagerRenewalFailure
+      expr: rate(certmanager_certificate_renewal_errors_total[5m]) > 0
+      for: 5m
+      labels:
+        severity: critical
+      annotations:
+        summary: "Certificate Renewal Failing"
+        description: "Certificate {{ $labels.name }} is failing to renew."
+
+  - name: ollama-ai-alerts
+    rules:
+    - alert: OllamaHighGPUUtilization
+      expr: ollama_gpu_utilization_percent > 90
+      for: 10m
+      labels:
+        severity: warning
+      annotations:
+        summary: "Ollama High GPU Utilization"
+        description: "Ollama GPU utilization on {{ $labels.instance }} is > 90% for 10 minutes."
+
+    - alert: OllamaHighInferenceQueue
+      expr: ollama_inference_queue_length > 10
+      for: 5m
+      labels:
+        severity: warning
+      annotations:
+        summary: "Ollama High Inference Queue"
+        description: "Ollama has more than 10 inferences queued for > 5m. Consider scaling."
+
+    - alert: OllamaHighInferenceLatency
+      expr: histogram_quantile(0.95, sum(rate(ollama_inference_duration_seconds_bucket[5m])) by (le)) > 30
+      for: 5m
+      labels:
+        severity: warning
+      annotations:
+        summary: "Ollama High Inference Latency"
+        description: "Ollama P95 inference latency > 30s. Models may be overloaded."

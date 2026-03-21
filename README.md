@@ -57,44 +57,63 @@ Building a self-hosted AI infrastructure platform with enterprise-grade security
 
 ## 🏗️ Architecture
 
+## 🏗️ Architecture
+
+```mermaid
+graph TD
+    %% AI Workloads Layer
+    AIOps[AI Ops Agent<br/>FastAPI]
+    Ollama[Ollama<br/>LLM Runtime]
+    Qdrant[(Qdrant<br/>Vector DB)]
+    
+    AIOps -->|Prompt + Context| Ollama
+    AIOps <-->|RAG Query| Qdrant
+
+    %% Certificate Layer
+    CertManager(cert-manager)
+    
+    %% Foundation Layer
+    subgraph Foundation Services
+        Vault[HashiCorp Vault<br/>PKI & Secrets]
+        SoftHSM{SoftHSM / YubiHSM<br/>Auto-Unseal}
+        CoreDNS(CoreDNS)
+    end
+    
+    CertManager -->|Auto-Renewal via Issuer| Vault
+    AIOps -->|Injects TLS / API Keys| Vault
+    Vault -->|Decrypts Master Key| SoftHSM
+    
+    %% Infrastructure Layer
+    subgraph Infrastructure
+        K8s[Kubernetes Orchestration<br/>K3s / Kind]
+        Longhorn[(Longhorn CSI<br/>Persistent Storage)]
+        K8s <--> Longhorn
+    end
+    
+    Foundation Services --> Infrastructure
 ```
-┌─────────────────────────────────────────────────────────┐
-│                  AIOps Substrate Stack                   │
-├─────────────────────────────────────────────────────────┤
-│                                                           │
-│  ┌─────────────┐  ┌──────────────┐  ┌────────────────┐ │
-│  │  AI/LLM     │  │  Vector DB   │  │  AI Ops Agent  │ │
-│  │  (Ollama)   │  │  (Qdrant)    │  │  (FastAPI)     │ │
-│  └─────────────┘  └──────────────┘  └────────────────┘ │
-│         ↓                ↓                    ↓          │
-│  ┌──────────────────────────────────────────────────┐  │
-│  │         Automatic Certificate Management         │  │
-│  │         (cert-manager + Vault PKI)               │  │
-│  └──────────────────────────────────────────────────┘  │
-│         ↓                                                │
-│  ┌─────────────────────────────────────────────────┐   │
-│  │           Foundation Services Layer              │   │
-│  │  ┌──────────┐  ┌────────┐  ┌──────────────────┐│   │
-│  │  │ CoreDNS  │  │ Vault  │  │    SoftHSM       ││   │
-│  │  │  (DNS)   │  │ (PKI)  │  │  (Auto-unseal)   ││   │
-│  │  └──────────┘  └────────┘  └──────────────────┘│   │
-│  └─────────────────────────────────────────────────┘   │
-│         ↓                                                │
-│  ┌─────────────────────────────────────────────────┐   │
-│  │        Kubernetes Orchestration (Kind)          │   │
-│  └─────────────────────────────────────────────────┘   │
-│         ↓                                                │
-│  ┌─────────────────────────────────────────────────┐   │
-│  │    Infrastructure as Code (Terraform/Ansible)   │   │
-│  └─────────────────────────────────────────────────┘   │
-│         ↓                                                │
-│  ┌─────────────────────────────────────────────────┐   │
-│  │    CI/CD Pipeline (GitHub Actions)              │   │
-│  │    • Security Scanning (Trivy)                  │   │
-│  │    • SBOM Generation (Syft)                     │   │
-│  │    • Automated Testing & Deployment             │   │
-│  └─────────────────────────────────────────────────┘   │
-└─────────────────────────────────────────────────────────┘
+
+## 🔄 Certificate Lifecycle Flow
+
+```mermaid
+sequenceDiagram
+    participant Pod as AI Ops Pod
+    participant CM as cert-manager
+    participant Vault as Vault PKI
+    participant K8s as K8s Secret
+    
+    Note over Pod,K8s: Certificate Generation
+    CM->>Vault: 1. Request signed TLS cert
+    Note right of Vault: Validates Role<br/>(e.g., ai-ops-agent)
+    Vault-->>CM: 2. Issues 30-day certificate
+    CM->>K8s: 3. Stores as TLS Secret
+    K8s-->>Pod: 4. Mounts Secret / Injects
+    
+    Note over Pod,K8s: Auto-Renewal (Day 20)
+    CM->>Vault: 5. Renew expiring cert
+    Vault-->>CM: 6. Issues new 30-day cert
+    CM->>K8s: 7. Updates TLS Secret
+    K8s-->>Pod: 8. Pod reloads cert automatically
 ```
 
 ## 📚 Documentation Structure

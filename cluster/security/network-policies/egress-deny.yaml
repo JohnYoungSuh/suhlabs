@@ -1,0 +1,29 @@
+# Uses Calico GlobalNetworkPolicy to deny external Egress unless explicitly allowed
+apiVersion: crd.projectcalico.org/v1
+kind: GlobalNetworkPolicy
+metadata:
+  name: deny-external-egress
+spec:
+  order: 1000
+  types:
+  - Egress
+  egress:
+  # Allow internal cluster communication
+  - action: Allow
+    destination:
+      nets:
+      - 10.0.0.0/8
+      - 172.16.0.0/12
+      - 192.168.0.0/16
+  # Allow DNS resolution
+  - action: Allow
+    protocol: UDP
+    destination:
+      ports:
+      - 53
+  - action: Allow
+    protocol: TCP
+    destination:
+      ports:
+      - 53
+  # By default, anything outside RFC1918 is denied

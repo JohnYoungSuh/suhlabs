@@ -1,0 +1,62 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: ai-ops-health-dashboard
+  namespace: observability
+  labels:
+    grafana_dashboard: "1"
+data:
+  ai-ops-health.json: |
+    {
+      "title": "AI Ops Substrate Health",
+      "description": "Aggregate dashboard for Vault, Cert-Manager, and Ollama statuses",
+      "refresh": "1m",
+      "panels": [
+        {
+          "type": "stat",
+          "title": "Vault Unsealed Modules",
+          "gridPos": {"x": 0, "y": 0, "w": 8, "h": 6},
+          "targets": [{"expr": "sum(vault_sys_core_unsealed)"}],
+          "options": {
+            "reduceOptions": { "calcs": ["lastNotNull"] },
+            "colorMode": "value",
+            "textMode": "auto"
+          }
+        },
+        {
+          "type": "stat",
+          "title": "Certificates Expiring < 7 days",
+          "gridPos": {"x": 8, "y": 0, "w": 8, "h": 6},
+          "targets": [{"expr": "count((certmanager_certificate_expiration_timestamp_seconds - time()) / 86400 < 7) or vector(0)"}],
+          "options": {
+            "reduceOptions": { "calcs": ["lastNotNull"] },
+            "colorMode": "value"
+          }
+        },
+        {
+          "type": "gauge",
+          "title": "Ollama GPU Utilization",
+          "gridPos": {"x": 16, "y": 0, "w": 8, "h": 6},
+          "targets": [{"expr": "avg(ollama_gpu_utilization_percent) or vector(0)"}],
+          "options": {
+            "min": 0,
+            "max": 100
+          }
+        },
+        {
+          "type": "timeseries",
+          "title": "Vault Request Latency (P99)",
+          "gridPos": {"x": 0, "y": 6, "w": 12, "h": 8},
+          "targets": [{"expr": "histogram_quantile(0.99, sum(rate(vault_core_handle_request_duration_seconds_bucket[5m])) by (le))"}],
+          "options": {
+            "tooltip": { "mode": "multi", "sort": "none" }
+          }
+        },
+        {
+          "type": "timeseries",
+          "title": "Ollama Inference Queue",
+          "gridPos": {"x": 12, "y": 6, "w": 12, "h": 8},
+          "targets": [{"expr": "sum(ollama_inference_queue_length)"}]
+        }
+      ]
+    }

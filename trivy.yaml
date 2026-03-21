@@ -1,0 +1,22 @@
+# Trivy security scanner configuration
+
+severity:
+  - CRITICAL
+  - HIGH
+  - MEDIUM
+
+vulnerability:
+  type:
+    - os
+    - library
+
+scan:
+  skip-dirs:
+    - node_modules
+    - vendor
+    - venv
+    - .git
+
+exit-code: 0 # Don't fail build on vulnerabilities (report only)
+
+format: sarif

@@ -37,8 +37,8 @@ server:
       cpu: 500m
       memory: 512Mi
 
-  # Replicas - single instance for dev
-  replicas: 1
+  # Replicas - handled by HA block in Prod
+  # replicas: 1
 
   # Update strategy
   updateStrategyType: "OnDelete"
@@ -50,42 +50,70 @@ server:
     port: 8200
     targetPort: 8200
 
-  # Data storage configuration
+  # Data storage configuration (VolumeClaimTemplates)
   dataStorage:
     enabled: true
     size: 10Gi
-    storageClass: null  # Use cluster default
+    storageClass: "longhorn"
     accessMode: ReadWriteOnce
 
   # Audit storage (disabled for now, enable in production)
   auditStorage:
     enabled: false
 
-  # Standalone mode configuration (file-based storage)
+  # Standalone mode configuration (disabled for prod)
   standalone:
-    enabled: true
-    config: |
-      ui = true
-
-      listener "tcp" {
-        tls_disable = 1
-        address = "[::]:8200"
-        cluster_address = "[::]:8201"
-      }
-
-      storage "file" {
-        path = "/vault/data"
-      }
-
-      # Enable Prometheus metrics
-      telemetry {
-        prometheus_retention_time = "30s"
-        disable_hostname = true
-      }
-
-  # HA mode (disabled for dev)
-  ha:
     enabled: false
+
+  # HA mode (Raft storage + 3 replicas)
+  ha:
+    enabled: true
+    replicas: 3
+    
+    # Leader election and Raft config
+    raft:
+      enabled: true
+      setNodeId: true
+      config: |
+        ui = true
+
+        listener "tcp" {
+          tls_disable = 1
+          address = "[::]:8200"
+          cluster_address = "[::]:8201"
+        }
+
+        storage "raft" {
+          path = "/vault/data"
+        }
+
+        telemetry {
+          prometheus_retention_time = "30s"
+          disable_hostname = true
+        }
+
+    # PodDisruptionBudget to prevent quorum loss
+    disruptionBudget:
+      enabled: true
+      maxUnavailable: null
+      minAvailable: 2
+
+  # Readiness Probe - Ensures pods don't report ready until unsealed/joined
+  readinessProbe:
+    enabled: true
+    path: "/v1/sys/health?standbyok=true"
+    
+  # Anti-affinity to ensure pods are spread across nodes
+  affinity: |
+    podAntiAffinity:
+      preferredDuringSchedulingIgnoredDuringExecution:
+      - weight: 100
+        podAffinityTerm:
+          labelSelector:
+            matchLabels:
+              app.kubernetes.io/name: vault
+              app.kubernetes.io/instance: vault
+          topologyKey: kubernetes.io/hostname
 
   # Service account
   serviceAccount:

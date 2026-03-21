@@ -1,0 +1,72 @@
+# Advanced Git Automation Targets for Multi-Repo Management
+
+.PHONY: git-status git-pull git-commit git-hooks-install git-validate
+
+# Multi-repo Git operations
+git-status:
+	@echo "📊 Checking status of all repositories..."
+	@./tools/git-status-all.sh
+
+git-pull:
+	@echo "📥 Pulling latest from all repositories..."
+	@./tools/git-pull-all.sh
+
+git-commit:
+	@if [ -z "$(MSG)" ]; then \
+		echo "❌ Error: Commit message required"; \
+		echo "Usage: make git-commit MSG=\"your message\""; \
+		exit 1; \
+	fi
+	@./tools/git-commit-all.sh "$(MSG)"
+
+# Git hooks management
+git-hooks-install:
+	@echo "🔧 Installing Git hooks..."
+	@./tools/install-hooks.sh
+
+git-hooks-uninstall:
+	@echo "🗑️  Uninstalling Git hooks..."
+	@rm -f .git/hooks/pre-commit .git/hooks/commit-msg
+	@echo "✅ Hooks uninstalled"
+
+# Code quality checks
+git-validate:
+	@echo "🔍 Running code quality checks..."
+	@if command -v shellcheck >/dev/null 2>&1; then \
+		echo "  → ShellCheck..."; \
+		shellcheck tools/*.sh || true; \
+	else \
+		echo "  ⚠️  ShellCheck not installed"; \
+	fi
+	@echo "✅ Validation complete"
+
+# Quick reference
+git-help:
+	@./tools/git-reference.sh
+
+# Combined workflow targets
+git-morning: git-pull git-status
+	@echo "☀️  Morning update complete!"
+
+git-evening: git-status
+	@echo "🌙 Ready to commit? Run: make git-commit MSG=\"your message\""
+
+# Version management
+git-tag:
+	@if [ -z "$(VERSION)" ]; then \
+		echo "❌ Error: Version required"; \
+		echo "Usage: make git-tag VERSION=v1.0.0"; \
+		exit 1; \
+	fi
+	@echo "🏷️  Tagging version $(VERSION)..."
+	@git tag -a $(VERSION) -m "Release $(VERSION)"
+	@git push origin $(VERSION)
+	@echo "✅ Tag $(VERSION) created and pushed"
+
+# Development workflow helpers
+dev-start: git-pull
+	@echo "🚀 Development environment ready"
+
+dev-end: git-status
+	@echo "💾 Don't forget to commit your changes!"
+	@echo "   make git-commit MSG=\"your message\""

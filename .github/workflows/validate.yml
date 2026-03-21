@@ -16,10 +16,10 @@ jobs:
     
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v4.2.2
       
       - name: Run ShellCheck
-        uses: ludeeus/action-shellcheck@master
+        uses: ludeeus/action-shellcheck@2.0.0
         with:
           scandir: './tools'
           severity: warning
@@ -34,7 +34,7 @@ jobs:
     
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v4.2.2
         with:
           fetch-depth: 0
       
@@ -51,7 +51,7 @@ jobs:
     
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v4.2.2
       
       - name: Run yamllint
         uses: ibiqlik/action-yamllint@v3
@@ -65,7 +65,7 @@ jobs:
     
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v4.2.2
       
       - name: Run markdownlint
         uses: nosborn/github-action-markdown-cli@v3.3.0
@@ -81,7 +81,7 @@ jobs:
     
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v4.2.2
         with:
           fetch-depth: 0
       
@@ -93,13 +93,16 @@ jobs:
   security-audit:
     name: Security Audit
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write
     
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v4.2.2
       
       - name: Run Trivy vulnerability scanner
-        uses: aquasecurity/trivy-action@master
+        uses: aquasecurity/trivy-action@0.35.0
         with:
           scan-type: 'fs'
           scan-ref: '.'
@@ -108,7 +111,7 @@ jobs:
           output: 'trivy-results.sarif'
       
       - name: Upload Trivy results to GitHub Security
-        uses: github/codeql-action/upload-sarif@v3
+        uses: github/codeql-action/upload-sarif@v4
         if: always()
         with:
           sarif_file: 'trivy-results.sarif'
@@ -119,7 +122,7 @@ jobs:
     
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v4.2.2
       
       - name: Check for broken links in docs
         uses: gaurav-nelson/github-action-markdown-link-check@v1

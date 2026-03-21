@@ -27,7 +27,7 @@ jobs:
         uses: actions/checkout@0c366fd6a839edf440554fa01a7085ccba70ac98 # v6.0.2
 
       - name: Set up Terraform
-        uses: hashicorp/setup-terraform@v3
+        uses: hashicorp/setup-terraform@v3.1.2
         with:
           terraform_version: 1.6.0
 
@@ -72,7 +72,7 @@ jobs:
         uses: actions/checkout@0c366fd6a839edf440554fa01a7085ccba70ac98 # v6.0.2
 
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
+        uses: docker/setup-buildx-action@v3.6.1
 
       - name: Log in to GitHub Container Registry
         if: github.event_name != 'pull_request'
@@ -87,7 +87,7 @@ jobs:
 
       - name: Extract metadata for AI Ops Agent
         id: meta
-        uses: docker/metadata-action@v5
+        uses: docker/metadata-action@v5.5.1
         with:
           images: ${{ env.REGISTRY }}/${{ steps.repo.outputs.name }}/ai-ops-agent
           tags: |
@@ -145,7 +145,7 @@ jobs:
           kubectl get pods -A
 
       - name: Set up Helm
-        uses: azure/setup-helm@v3
+        uses: azure/setup-helm@v4.2.0
         with:
           version: ${{ env.HELM_VERSION }}
 
@@ -246,8 +246,8 @@ jobs:
           chmod +x init-vault-pki.sh verify-pki.sh
 
           # Get vault token from initialization
-          if [ -f /home/runner/work/suhlabs/suhlabs/vault-keys.txt ]; then
-            export VAULT_TOKEN=$(grep 'Initial Root Token:' /home/runner/work/suhlabs/suhlabs/vault-keys.txt | awk '{print $NF}')
+          if [ -f /home/runner/work/aiops-substrate/aiops-substrate/vault-keys.txt ]; then
+            export VAULT_TOKEN=$(grep 'Initial Root Token:' /home/runner/work/aiops-substrate/aiops-substrate/vault-keys.txt | awk '{print $NF}')
           else
             export VAULT_TOKEN=root
           fi
@@ -265,8 +265,8 @@ jobs:
           fi
 
           cd cluster/foundation/vault-pki
-          if [ -f /home/runner/work/suhlabs/suhlabs/vault-keys.txt ]; then
-            export VAULT_TOKEN=$(grep 'Initial Root Token:' /home/runner/work/suhlabs/suhlabs/vault-keys.txt | awk '{print $NF}')
+          if [ -f /home/runner/work/aiops-substrate/aiops-substrate/vault-keys.txt ]; then
+            export VAULT_TOKEN=$(grep 'Initial Root Token:' /home/runner/work/aiops-substrate/aiops-substrate/vault-keys.txt | awk '{print $NF}')
           else
             export VAULT_TOKEN=root
           fi
@@ -278,8 +278,8 @@ jobs:
           cd cluster/foundation/cert-manager
           chmod +x deploy.sh
 
-          if [ -f /home/runner/work/suhlabs/suhlabs/vault-keys.txt ]; then
-            export VAULT_TOKEN=$(grep 'Initial Root Token:' /home/runner/work/suhlabs/suhlabs/vault-keys.txt | awk '{print $NF}')
+          if [ -f /home/runner/work/aiops-substrate/aiops-substrate/vault-keys.txt ]; then
+            export VAULT_TOKEN=$(grep 'Initial Root Token:' /home/runner/work/aiops-substrate/aiops-substrate/vault-keys.txt | awk '{print $NF}')
           else
             export VAULT_TOKEN=root
           fi
@@ -305,8 +305,8 @@ jobs:
           cd cluster/foundation
           chmod +x verify-all.sh
 
-          if [ -f /home/runner/work/suhlabs/suhlabs/vault-keys.txt ]; then
-            export VAULT_TOKEN=$(grep 'Initial Root Token:' /home/runner/work/suhlabs/suhlabs/vault-keys.txt | awk '{print $NF}')
+          if [ -f /home/runner/work/aiops-substrate/aiops-substrate/vault-keys.txt ]; then
+            export VAULT_TOKEN=$(grep 'Initial Root Token:' /home/runner/work/aiops-substrate/aiops-substrate/vault-keys.txt | awk '{print $NF}')
           fi
           export VAULT_ADDR=http://localhost:8200
 
@@ -314,9 +314,10 @@ jobs:
 
       - name: Upload test results
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v4.4.0
         with:
           name: test-results
+          if-no-files-found: ignore
           path: |
             cluster/foundation/**/*.log
           retention-days: 7

@@ -62,10 +62,10 @@ resource "kubernetes_limit_range" "this" {
     limit {
       type = "Container"
 
-      default = var.limit_range.default
+      default         = var.limit_range.default
       default_request = var.limit_range.default_request
-      max    = var.limit_range.max
-      min    = var.limit_range.min
+      max             = var.limit_range.max
+      min             = var.limit_range.min
     }
   }
 }

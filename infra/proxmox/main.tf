@@ -1,16 +1,16 @@
 terraform {
   required_providers {
     proxmox = {
-      source = "telmate/proxmox"
+      source  = "telmate/proxmox"
       version = "3.0.1-rc1"
     }
   }
 }
 
 provider "proxmox" {
-  pm_api_url = var.proxmox_api_url
-  pm_user = var.proxmox_user
-  pm_password = var.proxmox_password
+  pm_api_url      = var.proxmox_api_url
+  pm_user         = var.proxmox_user
+  pm_password     = var.proxmox_password
   pm_tls_insecure = true
 }
 
@@ -28,15 +28,15 @@ resource "proxmox_vm_qemu" "k3s_control_plane" {
   bootdisk    = "scsi0"
 
   disk {
-    slot = 0
-    size = "50G"
-    type = "scsi"
-    storage = "local-lvm"
+    slot     = 0
+    size     = "50G"
+    type     = "scsi"
+    storage  = "local-lvm"
     iothread = 1
   }
 
   network {
-    model = "virtio"
+    model  = "virtio"
     bridge = "vmbr0"
   }
 
@@ -61,15 +61,15 @@ resource "proxmox_vm_qemu" "k3s_worker" {
   bootdisk    = "scsi0"
 
   disk {
-    slot = 0
-    size = "200G" # Larger disk for Longhorn storage
-    type = "scsi"
-    storage = "local-lvm"
+    slot     = 0
+    size     = "200G" # Larger disk for Longhorn storage
+    type     = "scsi"
+    storage  = "local-lvm"
     iothread = 1
   }
 
   network {
-    model = "virtio"
+    model  = "virtio"
     bridge = "vmbr0"
   }
 

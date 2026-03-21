@@ -142,7 +142,7 @@ jobs:
       # ========================================================================
       - name: Build image locally
         id: build
-        uses: docker/build-push-action@v5
+        uses: docker/build-push-action@v7
         with:
           context: cluster/ai-ops-agent
           load: true  # Load into local Docker daemon

@@ -34,7 +34,7 @@ jobs:
         uses: docker/setup-buildx-action@v3
 
       - name: Build AI Ops Agent image
-        uses: docker/build-push-action@v5
+        uses: docker/build-push-action@v7
         with:
           context: cluster/ai-ops-agent
           load: true
@@ -161,7 +161,7 @@ jobs:
 
       - name: Build and push AI Ops Agent
         id: build-push
-        uses: docker/build-push-action@v5
+        uses: docker/build-push-action@v7
         with:
           context: cluster/ai-ops-agent
           push: true

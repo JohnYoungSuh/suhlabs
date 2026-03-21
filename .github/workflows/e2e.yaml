@@ -76,7 +76,7 @@ jobs:
 
       - name: Build and Push AIOpsAgent Operator
         id: build-and-push
-        uses: docker/build-push-action@v5
+        uses: docker/build-push-action@v7
         with:
           context: cluster/operators/ai-ops-operator/
           push: true

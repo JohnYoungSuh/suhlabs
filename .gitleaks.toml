@@ -9,6 +9,11 @@ description = "Allowlisted files and patterns"
 paths = [
     '''\.template$''',
     '''\.md$''',
+    '''\.github/workflows/.*''',
+    '''docs/.*''',
+    '''infra/local/.*''',
+    '''README\.md$''',
+    '''AI_AGENT_RULES\.md$''',
     '''\.example$''',
     '''venv/''',
     '''.venv/''',

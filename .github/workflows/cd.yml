@@ -9,7 +9,6 @@ on:
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
   REGISTRY: ghcr.io
-  IMAGE_NAME: ${{ github.repository }}/ai-agent
 
 jobs:
   test:
@@ -114,11 +113,15 @@ jobs:
 
       - uses: docker/setup-buildx-action@v3
 
+      - name: Prepare repository name (lowercase for docker)
+        id: repo
+        run: echo "name=${GITHUB_REPOSITORY,,}" >> $GITHUB_OUTPUT
+
       - name: Extract metadata
         id: meta
         uses: docker/metadata-action@v5
         with:
-          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          images: ${{ env.REGISTRY }}/${{ steps.repo.outputs.name }}/ai-agent
           tags: |
             type=sha,prefix={{branch}}-
             type=ref,event=branch
@@ -297,7 +300,7 @@ jobs:
       - name: Deployment placeholder
         run: |
           echo "=== Deployment Configuration ==="
-          echo "Image: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:main-${{ github.sha }}"
+          echo "Image: ${{ env.REGISTRY }}/${{ steps.repo.outputs.name }}/ai-agent:main-${{ github.sha }}"
           echo "Environment: development"
           echo "SHA: ${{ github.sha }}"
           echo ""
@@ -307,7 +310,7 @@ jobs:
           echo ""
           echo "Deployment command would be:"
           echo "kubectl set image deployment/ai-ops-agent \\"
-          echo "  ai-ops-agent=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:main-${{ github.sha }} \\"
+          echo "  ai-ops-agent=${{ env.REGISTRY }}/${{ steps.repo.outputs.name }}/ai-agent:main-${{ github.sha }} \\"
           echo "  -n ai-ops"
 
       # Uncomment when ready to deploy to actual cluster
@@ -322,7 +325,7 @@ jobs:
       # - name: Deploy to Kubernetes
       #   run: |
       #     kubectl set image deployment/ai-ops-agent \
-      #       ai-ops-agent=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:main-${{ github.sha }} \
+      #       ai-ops-agent=${{ env.REGISTRY }}/${{ steps.repo.outputs.name }}/ai-agent:main-${{ github.sha }} \
       #       -n ai-ops
       #     kubectl rollout status deployment/ai-ops-agent -n ai-ops --timeout=5m
 

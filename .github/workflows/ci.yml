@@ -83,7 +83,7 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
       - name: prepare repository name (lowercase for docker)
         id: repo
-        run: echo "name=$(echo '${{ github.repository }}' | tr '[:upper:]' '[:lower:]')" >> $GITHUB_OUTPUT
+        run: echo "name=${GITHUB_REPOSITORY,,}" >> $GITHUB_OUTPUT
 
       - name: Extract metadata for AI Ops Agent
         id: meta

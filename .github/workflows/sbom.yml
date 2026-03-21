@@ -157,7 +157,7 @@ jobs:
 
       - name: Prepare repository name (lowercase for docker)
         id: repo
-        run: echo "name=$(echo '${{github.repository }}' | tr '[:upper:]' '[:lower:]')" >> $GITHUB_OUTPUT
+        run: echo "name=${GITHUB_REPOSITORY,,}" >> $GITHUB_OUTPUT
 
       - name: Build and push AI Ops Agent
         id: build-push
@@ -227,7 +227,7 @@ jobs:
 
       - name: Prepare repository name (lowercase for docker)
         id: repo
-        run: echo "name=$(echo '${{ github.repository }}' | tr '[:upper:]' '[:lower:]')" >> $GITHUB_OUTPUT
+        run: echo "name=${GITHUB_REPOSITORY,,}" >> $GITHUB_OUTPUT
 
       - name: Verify image signature
         run: |

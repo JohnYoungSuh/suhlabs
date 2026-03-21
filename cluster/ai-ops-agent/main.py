@@ -23,6 +23,7 @@ from ai_ops_agent.mcp.policy_engine import PolicyEngine
 from ai_ops_agent.mcp.approval import ApprovalWorkflow
 from ai_ops_agent.ml.logger import MLLogger
 from ai_ops_agent.ml.analytics import MLAnalytics
+from ai_ops_agent.ml.retrainer import RetrainingEngine
 from ai_ops_agent.models import (
     Intent, ExecutionPlan, PolicyDecision, UserContext
 )
@@ -59,7 +60,26 @@ ml_analytics = MLAnalytics(log_dir=ML_LOG_DIR)
 domain_manager = DomainManager()
 onboarding_flow = OnboardingFlow(domain_manager=domain_manager)
 
+retraining_engine = RetrainingEngine(
+    ollama_host=OLLAMA_HOST,
+    dataset_path=os.path.join(ML_LOG_DIR, "finetuning_dataset.jsonl"),
+    threshold=5
+)
+
 logger.info("AI Ops/Sec Agent initialized")
+
+@app.on_event("startup")
+async def start_autonomous_retraining():
+    import asyncio
+    async def retrain_loop():
+        # Delay start to allow other services to initialize
+        await asyncio.sleep(30)
+        while True:
+            # Poll datasets for retraining thresholds every 10 minutes
+            await retraining_engine.evaluate_and_retrain()
+            await asyncio.sleep(600)
+            
+    asyncio.create_task(retrain_loop())
 
 
 # Request/Response Models

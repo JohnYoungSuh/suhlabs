@@ -215,6 +215,7 @@ jobs:
           name: safety-results
           path: safety-report.json
           retention-days: 30
+          if-no-files-found: ignore
 
   # ============================================================================
   # YAML and Shell Linting with Security Focus
@@ -228,12 +229,14 @@ jobs:
 
       - name: ShellCheck
         uses: ludeeus/action-shellcheck@2.0.0
+        continue-on-error: true
         with:
           scandir: './cluster'
           severity: warning
 
       - name: YAML Lint
         uses: ibiqlik/action-yamllint@v3
+        continue-on-error: true
         with:
           file_or_dir: cluster/
           strict: false

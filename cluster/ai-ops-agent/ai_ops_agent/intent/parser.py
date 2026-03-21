@@ -18,6 +18,23 @@ class IntentParser:
         self.ollama_host = ollama_host.rstrip('/')
         self.model = model
         self.client = httpx.AsyncClient(timeout=60.0)
+        self.tuned_model_base = "aiops-intent-tuned"
+
+    async def _resolve_best_model(self) -> str:
+        """Dynamically resolve if a hot-reloaded tuned model exists"""
+        try:
+            url = f"{self.ollama_host}/api/tags"
+            response = await self.client.get(url, timeout=5.0)
+            if response.status_code == 200:
+                tags = response.json().get("models", [])
+                for t in tags:
+                    if t.get("name", "").startswith(self.tuned_model_base):
+                        # Ensure we always grab the active tuned model
+                        return t["name"]
+        except Exception:
+            pass
+            
+        return self.model
 
     async def parse(self, user_input: str) -> Intent:
         """
@@ -131,10 +148,12 @@ Response:"""
     async def _call_ollama(self, prompt: str) -> str:
         """Call Ollama API for generation"""
 
+        # Resolve weights instantly for true hot-reloading
+        active_model = await self._resolve_best_model()
         url = f"{self.ollama_host}/api/generate"
 
         payload = {
-            "model": self.model,
+            "model": active_model,
             "prompt": prompt,
             "stream": False,
             "format": "json",

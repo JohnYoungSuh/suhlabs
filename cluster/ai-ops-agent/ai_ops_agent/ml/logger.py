@@ -243,9 +243,36 @@ class MLLogger:
         corrected_intent: Dict
     ):
         """Create fine-tuning training example from corrected intent"""
+        query_text = ""
+        # 1. Fetch the original query text by reversing the logs
+        try:
+            with open(self.queries_log, 'r') as f:
+                for line in f:
+                    try:
+                        entry = json.loads(line)
+                        if entry.get("id") == query_id:
+                            query_text = entry.get("query_text", "")
+                            break
+                    except json.JSONDecodeError:
+                        continue
+        except FileNotFoundError:
+            pass
 
-        # TODO: In production, add to fine-tuning dataset table
-        logger.info(f"Created fine-tuning example from query {query_id}")
+        if not query_text:
+            logger.warning(f"Could not find original query {query_id} to complete fine-tuning pair")
+            return
+
+        # 2. Package into a supervised LLM instruction-tuning schema (Alpaca/ChatML style)
+        finetuning_record = {
+            "instruction": "You are an infrastructure automation intent parser. Parse this request into structured format.",
+            "input": query_text,
+            "output": json.dumps(corrected_intent)
+        }
+
+        dataset_path = f"{self.log_dir}/finetuning_dataset.jsonl"
+        self._append_json_line(dataset_path, finetuning_record)
+        
+        logger.info(f"Synthesized new structural ML training example from query {query_id}")
 
     def _append_json_line(self, file_path: str, data: Dict):
         """Append JSON line to file"""
